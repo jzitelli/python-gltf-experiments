@@ -1,6 +1,8 @@
+import sys
 import json
 
 import OpenGL.GL as gl
+import OpenGL.GLU as glu
 import glfw3 as glfw
 
 def main():
@@ -10,23 +12,32 @@ def main():
         glfw.Terminate()
         print('failed to create glfw window')
         exit(1)
-    # press ESC to quit:
-    def keydown_callback(window, key, scancode, action, mods):
+
+    # set up glfw callbacks:
+    def on_resize(window, width, height):
+        gl.glViewport(0, 0, width, height)
+        gl.glMatrixMode(gl.GL_PROJECTION)
+        gl.glLoadIdentity()
+        glu.gluPerspective(50, float(width) / height, 0.1, 1000)
+        gl.glMatrixMode(gl.GL_MODELVIEW)
+    glfw.SetWindowSizeCallback(window, on_resize)
+    def on_keydown(window, key, scancode, action, mods):
+        # press ESC to quit:
         if (key == glfw.KEY_ESCAPE and action == glfw.PRESS):
             glfw.SetWindowShouldClose(window, gl.GL_TRUE)
-    glfw.SetKeyCallback(window, keydown_callback)
+    glfw.SetKeyCallback(window, on_keydown)
+
     # gl setup:
     glfw.MakeContextCurrent(window)
     print('OpenGL version: %s' % gl.glGetString(gl.GL_VERSION))
-    gl.glViewport(0, 0, window_size[0], window_size[1])
-    gl.glMatrixMode(gl.GL_PROJECTION)
-    gl.glLoadIdentity()
-    #gl.glPers
-    # start main loop:
+    on_resize(window, window_size[0], window_size[1])
+
+    # main loop:
     while not glfw.WindowShouldClose(window):
         gl.glClear(gl.GL_COLOR_BUFFER_BIT)
         glfw.SwapBuffers(window)
         glfw.PollEvents()
+
     # cleanup:
     print('quiting...')
     glfw.DestroyWindow(window)
@@ -34,7 +45,10 @@ def main():
 
 
 if __name__ == "__main__":
+    if len(sys.argv) != 2:
+        print('usage: python %s <path to gltf file>' % sys.argv[0])
+        exit()
     if not glfw.Init():
         print('failed to initialize glfw')
-    else:
-        main()
+        exit(1)
+    main()
