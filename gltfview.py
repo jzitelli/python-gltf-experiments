@@ -8,6 +8,8 @@ import OpenGL.GLU as glu
 
 import cyglfw3 as glfw
 
+import PIL.Image as Image
+
 
 def setup_glfw(width=640, height=480):
     if not glfw.Init():
@@ -39,7 +41,7 @@ def setup_glfw(width=640, height=480):
 
 def setup_shaders(gltf, gltf_dir):
     for shader_name, shader in gltf['shaders'].items():
-        # TODO: support embedded-data URI
+        # TODO: support data URIs
         shader_str = None
         try:
             shader_str = open(os.path.join(gltf_dir, shader['uri'])).read()
@@ -75,6 +77,44 @@ def setup_programs(gltf):
             program['id'] = program_id
 
 
+def setup_textures(gltf, gltf_dir):
+    # TODO: support data URIs
+    for image_name, image in gltf['images'].items():
+        try:
+            filename = os.path.join(gltf_dir, image['uri'])
+            pil_image = Image.open(filename)
+            print('* loaded image %s from %s' % (image_name, filename))
+            image['pil_image'] = pil_image
+        except Exception as err:
+            print('* failed to load image %s:\n%s' % (image_name, err))
+            exit(1)
+    for texture_name, texture in gltf['textures'].items():
+        texture_id = gl.glGenTextures(1)
+        gl.glBindTexture(texture['target'], texture_id)
+        image = gltf['images'][texture['source']]
+        pil_image = image['pil_image']
+        # following glview.cc example for now...
+        gl.glPixelStorei(gl.GL_UNPACK_ALIGNMENT, 1)
+        pixel_format = gl.GL_RGB if image.get('component') == 3 else gl.GL_RGBA
+        gl.glTexImage2D(texture['target'], 0, texture['internalFormat'],
+                        pil_image.width, pil_image.height, 0,
+                        pixel_format, texture['type'],
+                        list(pil_image.getdata())) # TODO: better way to pass data?
+        # gl.glTexParameterf(texture['target'], gl.GL_TEXTURE_MIN_FILTER, gl.GL_LINEAR)
+        # gl.glTexParameterf(texture['target'], gl.GL_TEXTURE_MAX_FILTER, gl.GL_LINEAR)
+        if gl.glGetError() != gl.GL_NO_ERROR:
+            print('* failed to create texture %s' % texture_name)
+            exit(1)
+        else:
+            print('* created texture %s' % texture_name)
+            texture['texture_id'] = texture_id
+        gl.glBindTexture(texture['target'], 0)
+
+
+def setup_buffers(gltf, gltf_dir):
+    pass
+
+
 def display_gltf(window, gltf, scene=None):
     if scene is None:
         scene = gltf['scenes'][gltf['scene']]
@@ -107,5 +147,7 @@ if __name__ == "__main__":
 
     setup_shaders(gltf, gltf_dir)
     setup_programs(gltf)
+    setup_textures(gltf, gltf_dir)
+    setup_buffers(gltf, gltf_dir)
 
     display_gltf(window, gltf)
