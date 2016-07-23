@@ -112,7 +112,37 @@ def setup_textures(gltf, gltf_dir):
 
 
 def setup_buffers(gltf, gltf_dir):
-    pass
+    buffers = gltf['buffers']
+    for buffer_name, buffer in buffers.items():
+        # TODO: support data URIs
+        try:
+            filename = os.path.join(gltf_dir, buffer['uri'])
+            buffer_data = None
+            if buffer['type'] == 'arraybuffer':
+                buffer_data = open(filename, 'rb').read()
+            elif buffer['type'] == 'text':
+                pass # TODO
+            buffer['data'] = buffer_data
+            print('* loaded buffer %s' % buffer_name)
+        except Exception as err:
+            print('* failed to load buffer %s:\n%s' % (buffer_name, err))
+            exit(1)
+    for bufferView_name, bufferView in gltf['bufferViews'].items():
+        buffer_id = gl.glGenBuffers(1)
+        byteOffset, byteLength = bufferView['byteOffset'], bufferView['byteLength']
+        gl.glBindBuffer(bufferView['target'], buffer_id)
+        gl.glBufferData(bufferView['target'], bufferView['byteLength'],
+                        buffers[bufferView['buffer']]['data'][byteOffset:byteOffset+byteLength], gl.GL_STATIC_DRAW)
+        if gl.glGetError() != gl.GL_NO_ERROR:
+            print('* failed to create buffer %s' % bufferView_name)
+            exit(1)
+        else:
+            print('* created buffer %s' % bufferView_name)
+            bufferView['buffer_id'] = buffer_id
+        gl.glBindBuffer(bufferView['target'], 0)
+    for accessor_name, accessor in gltf['accessors'].items():
+        # gl.glVertexAttribPointer
+        pass
 
 
 def display_gltf(window, gltf, scene=None):
