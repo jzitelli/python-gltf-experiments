@@ -11,6 +11,17 @@ import cyglfw3 as glfw
 import PIL.Image as Image
 
 
+ATTRIBUTE_TYPE_SIZES = {
+    'SCALAR': 1,
+    'VEC2': 2,
+    'VEC3': 3,
+    'VEC4': 4,
+    'MAT2': 4,
+    'MAT3': 9,
+    'MAT4': 16
+}
+
+
 def setup_glfw(width=640, height=480):
     if not glfw.Init():
         print('* failed to initialize glfw')
@@ -72,11 +83,13 @@ def setup_programs(gltf):
         if not gl.glGetProgramiv(program_id, gl.GL_LINK_STATUS):
             print('* failed to link program %s' % program_name)
             exit(1)
-        else:
-            print('* linked program %s' % program_name)
-            program['id'] = program_id
+        program['id'] = program_id
+        program['attribute_indices'] = {attribute: gl.glGetAttribLocation(program_id, attribute)
+                                        for attribute in program['attributes']}
+        print('* linked program %s' % program_name)
+        print('  attribute indices: %s' % program['attribute_indices'])
 
-
+        
 def setup_textures(gltf, gltf_dir):
     # TODO: support data URIs
     for image_name, image in gltf['images'].items():
@@ -140,19 +153,45 @@ def setup_buffers(gltf, gltf_dir):
             print('* created buffer %s' % bufferView_name)
             bufferView['buffer_id'] = buffer_id
         gl.glBindBuffer(bufferView['target'], 0)
-    for accessor_name, accessor in gltf['accessors'].items():
-        # gl.glVertexAttribPointer
-        pass
 
 
+def draw_primitive(primitive, gltf):
+    accessors = gltf['accessors']
+    bufferViews = gltf['bufferViews']
+    index_accessor = accessors[primitive['indices']]
+    index_bufferView = bufferViews[index_accessor['bufferView']]
+    gl.glBindBuffer(index_bufferView['target'], index_bufferView['buffer_id'])
+    material = gltf['materials'][primitive['material']]
+    technique = gltf['techniques'][material['technique']]
+    program = gltf['programs'][technique['program']]
+    gl.glUseProgram(program['id'])
+    attribute_indices = program['attribute_indices']
+    for semantic, accessor_name in primitive['attributes'].items():
+        accessor = accessors[accessor_name]
+        bufferView = bufferViews[accessor['bufferView']]
+        buffer_id = bufferView['buffer_id']
+        gl.glBindBuffer(bufferView['target'], buffer_id)
+        # attribute_index = attribute_indices[technique['attributes'][tattribute]]
+        # gl.glVertexAttribPointer(attribute_index, ATTRIBUTE_TYPE_SIZES[accessor['type']],
+        #                          accessor['componentType'], False, accessor['byteStride'], accessor['byteOffset'])
+        # gl.glEnableVertexAttribArray(attribute_index)
+
+        
 def display_gltf(window, gltf, scene=None):
     if scene is None:
         scene = gltf['scenes'][gltf['scene']]
+
+    # testing >>>>>>
+    mesh = list(gltf['meshes'].values())[0]
+    primitive = mesh['primitives'][0]
     # main loop:
     while not glfw.WindowShouldClose(window):
         gl.glClear(gl.GL_COLOR_BUFFER_BIT)
+        draw_primitive(primitive, gltf)
         glfw.SwapBuffers(window)
         glfw.PollEvents()
+    # <<<<<< testing
+
     # cleanup:
     print('* quiting...')
     glfw.DestroyWindow(window)
