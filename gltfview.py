@@ -10,8 +10,25 @@ import cyglfw3 as glfw
 
 import PIL.Image as Image
 
+try: # python 3.3 or later
+    from types import MappingProxyType
+except ImportError as err:
+    MappingProxyType = dict
 
-ATTRIBUTE_TYPE_SIZES = {
+
+class JSobject(object):
+    "Object-based representation (rather than dict) of JSON data.  Useful for interactively exploring JSON data via ipython tab-completion."
+    def __init__(self, json_dict):
+        for k, v in json_dict.items():
+            if k in self.__dict__:
+                raise Exception('attribute name collision: %s' % k)
+            if isinstance(v, dict):
+                self.__dict__[k] = JSobject(v)
+            else:
+                self.__dict__[k] = v
+
+
+GLTF_BUFFERVIEW_TYPE_SIZES = MappingProxyType({
     'SCALAR': 1,
     'VEC2': 2,
     'VEC3': 3,
@@ -19,12 +36,7 @@ ATTRIBUTE_TYPE_SIZES = {
     'MAT2': 4,
     'MAT3': 9,
     'MAT4': 16
-}
-try: # python 3.3 or later
-    from types import MappingProxyType
-    ATTRIBUTE_TYPE_SIZES = MappingProxyType(ATTRIBUTE_TYPE_SIZES)
-except ImportError as err:
-    pass
+})
 
 
 def setup_glfw(width=640, height=480):
@@ -55,12 +67,12 @@ def setup_glfw(width=640, height=480):
     return window
 
 
-def setup_shaders(gltf, gltf_dir):
+def setup_shaders(gltf, uri_path):
     for shader_name, shader in gltf['shaders'].items():
         # TODO: support data URIs
         shader_str = None
         try:
-            filename = os.path.join(gltf_dir, shader['uri'])
+            filename = os.path.join(uri_path, shader['uri'])
             shader_str = open(filename).read()
             print('* loaded shader "%s" (from %s):\n%s' % (shader_name, filename, shader_str))
         except Exception as err:
@@ -95,12 +107,12 @@ def setup_programs(gltf):
         print('  attribute indices: %s' % program['attribute_indices'])
 
 
-def setup_textures(gltf, gltf_dir):
+def setup_textures(gltf, uri_path):
     # TODO: support data URIs
     pil_images = {}
     for image_name, image in gltf['images'].items():
         try:
-            filename = os.path.join(gltf_dir, image['uri'])
+            filename = os.path.join(uri_path, image['uri'])
             pil_image = Image.open(filename)
             pil_images[image_name] = pil_image
             print('* loaded image "%s" (from %s)' % (image_name, filename))
@@ -127,13 +139,13 @@ def setup_textures(gltf, gltf_dir):
         print('* created texture "%s"' % texture_name)
 
 
-def setup_buffers(gltf, gltf_dir):
+def setup_buffers(gltf, uri_path):
     # TODO: support data URIs
     buffers = gltf['buffers']
     data_buffers = {}
     for buffer_name, buffer in buffers.items():
         try:
-            filename = os.path.join(gltf_dir, buffer['uri'])
+            filename = os.path.join(uri_path, buffer['uri'])
             if buffer['type'] == 'arraybuffer':
                 data_buffers[buffer_name] = open(filename, 'rb').read()
             elif buffer['type'] == 'text':
@@ -151,9 +163,14 @@ def setup_buffers(gltf, gltf_dir):
         if gl.glGetError() != gl.GL_NO_ERROR:
             print('* failed to create buffer "%s"' % bufferView_name)
             exit(1)
-        bufferView['buffer_id'] = buffer_id
+        bufferView['id'] = buffer_id
         gl.glBindBuffer(bufferView['target'], 0)
         print('* created buffer "%s"' % bufferView_name)
+
+
+def draw_mesh(mesh, gltf):
+    for primitive in mesh['primitives']:
+        draw_primitive(primitive, gltf)
 
 
 def draw_primitive(primitive, gltf):
@@ -165,18 +182,20 @@ def draw_primitive(primitive, gltf):
     program = gltf['programs'][technique['program']]
     # set up GL state for drawing the primitive:
     gl.glUseProgram(program['id'])
+    enabled_locations = []
     for attribute_name, parameter_name in technique['attributes'].items():
         parameter = technique['parameters'][parameter_name]
         semantic = parameter.get('semantic')
         if semantic:
             accessor = accessors[primitive['attributes'][semantic]]
             bufferView = bufferViews[accessor['bufferView']]
-            buffer_id = bufferView['buffer_id']
+            buffer_id = bufferView['id']
             gl.glBindBuffer(bufferView['target'], buffer_id)
             attribute_index = program['attribute_indices'][attribute_name]
-            gl.glVertexAttribPointer(attribute_index, ATTRIBUTE_TYPE_SIZES[accessor['type']],
+            gl.glVertexAttribPointer(attribute_index, GLTF_BUFFERVIEW_TYPE_SIZES[accessor['type']],
                                      accessor['componentType'], False, accessor['byteStride'], accessor['byteOffset'])
             gl.glEnableVertexAttribArray(attribute_index)
+            enabled_locations.append(attribute_index)
     material_values = material.get('values', {})
     for uniform_name, parameter_name in technique['uniforms'].items():
         parameter = technique['parameters'][parameter_name]
@@ -201,32 +220,42 @@ def draw_primitive(primitive, gltf):
                     print('* unhandled type: %s' % parameter['type'])
     index_accessor = accessors[primitive['indices']]
     index_bufferView = bufferViews[index_accessor['bufferView']]
-    gl.glBindBuffer(index_bufferView['target'], index_bufferView['buffer_id'])
+    gl.glBindBuffer(index_bufferView['target'], index_bufferView['id'])
     # draw:
     gl.glDrawElements(primitive['mode'], index_accessor['count'], index_accessor['componentType'],
                       c_void_p(index_accessor['byteOffset']))
     if gl.glGetError() != gl.GL_NO_ERROR:
         print('* error drawing elements')
         exit(1)
+    for location in enabled_locations:
+        gl.glDisableVertexAttribArray(location)
 
-        
-def display_gltf(window, gltf, scene=None):
-    if scene is None:
-        scene = gltf['scenes'][gltf['scene']]
+
+def show_gltf(gltf, uri_path, scene_name=None):
+    if scene_name is None:
+        scene_name = gltf['scene']
+    scene = gltf['scenes'][scene_name]
+
+    window = setup_glfw()
+
+    setup_shaders(gltf, uri_path)
+    setup_programs(gltf)
+    setup_textures(gltf, uri_path)
+    setup_buffers(gltf, uri_path)
+
+    sys.stdout.flush()
 
     # testing >>>>>>
     mesh = list(gltf['meshes'].values())[0]
-    primitive = mesh['primitives'][0]
-    # main loop:
     while not glfw.WindowShouldClose(window):
         gl.glClear(gl.GL_COLOR_BUFFER_BIT)
-        draw_primitive(primitive, gltf)
+        draw_mesh(mesh, gltf)
         glfw.SwapBuffers(window)
         glfw.PollEvents()
     # <<<<<< testing
 
     # cleanup:
-    print('* quiting...')
+    print('* closing window...')
     glfw.DestroyWindow(window)
     glfw.Terminate()
 
@@ -243,17 +272,8 @@ if __name__ == "__main__":
     except Exception as err:
         print('* failed to load %s:\n%s' % (sys.argv[1], err))
         exit(1)
-    gltf_dir = os.path.dirname(sys.argv[1])
 
-    sys.stdout.flush()
+    uri_path = os.path.dirname(sys.argv[1])
+    show_gltf(gltf, uri_path)
 
-    window = setup_glfw()
-
-    setup_shaders(gltf, gltf_dir)
-    setup_programs(gltf)
-    setup_textures(gltf, gltf_dir)
-    setup_buffers(gltf, gltf_dir)
-
-    sys.stdout.flush()
-
-    display_gltf(window, gltf)
+    gltf_jso = JSobject(gltf)
