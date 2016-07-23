@@ -8,4 +8,4 @@ A sandbox repo of Python-prototyped applications utilizing [glTF](https://github
 
 A basic application for displaying a glTF scene, inspired by the [tinygltfloader glview example](https://github.com/syoyo/tinygltfloader/tree/master/examples/glview).
 
-Dependencies: PyOpenGL, cyglfw3
+Dependencies: PyOpenGL, cyglfw3, PIL
