@@ -1,6 +1,6 @@
 # python-gltf-experiments
 
-A sandbox repo of Python-prototyped applications utilizing [glTF](https://github.com/KhronosGroup/glTF)
+A sandbox repo of Python-prototyped applications utilizing [glTF](https://github.com/KhronosGroup/glTF).
 
 ## Contents:
 

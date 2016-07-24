@@ -16,8 +16,9 @@ except ImportError as err:
     MappingProxyType = dict
 
 
-class JSobject(object):
-    "Object-based representation (rather than dict) of JSON data.  Useful for interactively exploring JSON data via ipython tab-completion."
+class JSobject(dict):
+    """Object-based representation (rather than dict) of JSON data.
+    Useful for interactively exploring JSON data via ipython tab-completion."""
     def __init__(self, json_dict):
         for k, v in json_dict.items():
             if k in self.__dict__:
@@ -168,21 +169,18 @@ def setup_buffers(gltf, uri_path):
         print('* created buffer "%s"' % bufferView_name)
 
 
-def draw_mesh(mesh, gltf):
-    for primitive in mesh['primitives']:
-        draw_primitive(primitive, gltf)
-
-
-def draw_primitive(primitive, gltf):
-    accessors = gltf['accessors']
-    bufferViews = gltf['bufferViews']
-    textures = gltf['textures']
+def setup_program_state(primitive, gltf):
     material = gltf['materials'][primitive['material']]
     technique = gltf['techniques'][material['technique']]
     program = gltf['programs'][technique['program']]
-    # set up GL state for drawing the primitive:
+
+    accessors = gltf['accessors']
+    bufferViews = gltf['bufferViews']
+    textures = gltf['textures']
+
     gl.glUseProgram(program['id'])
-    enabled_locations = []
+
+    setup_program_state.enabled_locations = []
     for attribute_name, parameter_name in technique['attributes'].items():
         parameter = technique['parameters'][parameter_name]
         semantic = parameter.get('semantic')
@@ -195,7 +193,8 @@ def draw_primitive(primitive, gltf):
             gl.glVertexAttribPointer(attribute_index, GLTF_BUFFERVIEW_TYPE_SIZES[accessor['type']],
                                      accessor['componentType'], False, accessor['byteStride'], accessor['byteOffset'])
             gl.glEnableVertexAttribArray(attribute_index)
-            enabled_locations.append(attribute_index)
+            setup_program_state.enabled_locations.append(attribute_index)
+
     material_values = material.get('values', {})
     for uniform_name, parameter_name in technique['uniforms'].items():
         parameter = technique['parameters'][parameter_name]
@@ -218,17 +217,37 @@ def draw_primitive(primitive, gltf):
                     gl.glUniform4f(location, *value)
                 else:
                     print('* unhandled type: %s' % parameter['type'])
+setup_program_state.enabled_locations = []
+
+
+def end_program_state():
+    for loc in setup_program_state.enabled_locations:
+        gl.glDisableVertexAttribArray(loc)
+
+
+def draw_mesh(mesh, gltf):
+    for primitive in mesh['primitives']:
+        draw_primitive(primitive, gltf)
+
+
+def draw_primitive(primitive, gltf):
+    accessors = gltf['accessors']
+    bufferViews = gltf['bufferViews']
+
+    setup_program_state(primitive, gltf)
+
     index_accessor = accessors[primitive['indices']]
     index_bufferView = bufferViews[index_accessor['bufferView']]
     gl.glBindBuffer(index_bufferView['target'], index_bufferView['id'])
+
     # draw:
     gl.glDrawElements(primitive['mode'], index_accessor['count'], index_accessor['componentType'],
                       c_void_p(index_accessor['byteOffset']))
     if gl.glGetError() != gl.GL_NO_ERROR:
         print('* error drawing elements')
         exit(1)
-    for location in enabled_locations:
-        gl.glDisableVertexAttribArray(location)
+
+    end_program_state()
 
 
 def show_gltf(gltf, uri_path, scene_name=None):
