@@ -20,6 +20,7 @@ class JSobject(dict):
     """Object-based representation (rather than dict) of JSON data.
     Useful for interactively exploring JSON data via ipython tab-completion."""
     def __init__(self, json_dict):
+        dict.__init__(self, json_dict)
         for k, v in json_dict.items():
             if k in self.__dict__:
                 raise Exception('attribute name collision: %s' % k)
@@ -296,3 +297,5 @@ if __name__ == "__main__":
     show_gltf(gltf, uri_path)
 
     gltf_jso = JSobject(gltf)
+
+
