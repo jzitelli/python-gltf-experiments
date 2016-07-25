@@ -20,15 +20,18 @@ class JSobject(dict):
     """Object-based representation (rather than dict) of JSON data.
     Useful for interactively exploring JSON data via ipython tab-completion."""
     def __init__(self, json_dict):
-        dict.__init__(self, json_dict)
+        dict.__init__(self)
+        d = {}
         for k, v in json_dict.items():
             if k in self.__dict__:
                 raise Exception('attribute name collision: %s' % k)
             if isinstance(v, dict):
-                self.__dict__[k] = JSobject(v)
+                d[k] = JSobject(v)
             else:
-                self.__dict__[k] = v
-
+                d[k] = v
+        self.__dict__.update(d)
+        self.update(d)
+        
 
 GLTF_BUFFERVIEW_TYPE_SIZES = MappingProxyType({
     'SCALAR': 1,
@@ -226,11 +229,6 @@ def end_program_state():
         gl.glDisableVertexAttribArray(loc)
 
 
-def draw_mesh(mesh, gltf):
-    for primitive in mesh['primitives']:
-        draw_primitive(primitive, gltf)
-
-
 def draw_primitive(primitive, gltf):
     accessors = gltf['accessors']
     bufferViews = gltf['bufferViews']
@@ -251,6 +249,24 @@ def draw_primitive(primitive, gltf):
     end_program_state()
 
 
+def draw_mesh(mesh, gltf):
+    for primitive in mesh['primitives']:
+        draw_primitive(primitive, gltf)
+
+
+def draw_node(node, gltf):
+    meshes = node.get('meshes', [])
+    for mesh_name in meshes:
+        draw_mesh(gltf['meshes'][mesh_name], gltf)
+    for child in node['children']:
+        draw_node(gltf['nodes'][child], gltf)
+        
+
+def draw_scene(scene, gltf):
+    for node_name in scene['nodes']:
+        draw_node(gltf['nodes'][node_name], gltf)
+
+
 def show_gltf(gltf, uri_path, scene_name=None):
     if scene_name is None:
         scene_name = gltf['scene']
@@ -266,10 +282,9 @@ def show_gltf(gltf, uri_path, scene_name=None):
     sys.stdout.flush()
 
     # testing >>>>>>
-    mesh = list(gltf['meshes'].values())[0]
     while not glfw.WindowShouldClose(window):
         gl.glClear(gl.GL_COLOR_BUFFER_BIT)
-        draw_mesh(mesh, gltf)
+        draw_scene(scene, gltf)
         glfw.SwapBuffers(window)
         glfw.PollEvents()
     # <<<<<< testing
@@ -296,6 +311,4 @@ if __name__ == "__main__":
     uri_path = os.path.dirname(sys.argv[1])
     show_gltf(gltf, uri_path)
 
-    gltf_jso = JSobject(gltf)
-
-
+    gltf = JSobject(gltf)
