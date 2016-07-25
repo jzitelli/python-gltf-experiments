@@ -312,3 +312,5 @@ if __name__ == "__main__":
     show_gltf(gltf, uri_path)
 
     gltf = JSobject(gltf)
+    scene = gltf.scenes[gltf.scene]
+    nodes = [gltf.nodes[n] for n in scene.nodes]
