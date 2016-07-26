@@ -213,8 +213,8 @@ def setup_program_state(primitive, gltf):
             if value:
                 if parameter['type'] == gl.GL_SAMPLER_2D:
                     texture = textures[value]
-                    gl.glUniform1i(location, texture['id'])
                     gl.glBindTexture(texture['target'], texture['id'])
+                    gl.glUniform1i(location, texture['id'])
                 elif parameter['type'] == gl.GL_FLOAT:
                     gl.glUniform1f(location, value)
                 elif parameter['type'] == gl.GL_FLOAT_VEC3:
@@ -256,22 +256,26 @@ def draw_mesh(mesh, gltf):
         draw_primitive(primitive, gltf)
 
 
-def draw_node(node, gltf):
+def setup_camera(camera):
+    gl.glMatrixMode(gl.GL_PROJECTION)
+    if 'perspective' in camera:
+        gl.glLoadIdentity()
+        glu.gluPerspective(camera['perspective']['yfov'],
+                           camera['perspective']['aspectRatio'],
+                           camera['perspective']['znear'],
+                           camera['perspective']['zfar'])
+    elif 'orthographic' in camera:
+        pass # TODO
+    gl.glMatrixMode(gl.GL_MODELVIEW)
+
+    
+def draw_node(node, gltf, view_matrix=None):
     matrix = np.array(node['matrix'], dtype=np.float32).reshape((4,4))
     gl.glPushMatrix()
-    gl.glMultMatrixf(matrix)
-    if 'camera' in node:
-        camera = gltf['cameras'][node['camera']]
-        gl.glMatrixMode(gl.GL_PROJECTION)
-        if 'perspective' in camera:
-            #gl.glLoadIdentity()
-            glu.gluPerspective(camera['perspective']['yfov'],
-                               camera['perspective']['aspectRatio'],
-                               camera['perspective']['znear'],
-                               camera['perspective']['zfar'])
-        if 'orthographic' in camera:
-            pass # TODO
-        gl.glMatrixMode(gl.GL_MODELVIEW)
+    if view_matrix is not None:
+        gl.glMultMatrixf(matrix @ view_matrix)
+    else:
+        gl.glMultMatrixf(matrix)
     meshes = node.get('meshes', [])
     for mesh_name in meshes:
         draw_mesh(gltf['meshes'][mesh_name], gltf)
@@ -280,11 +284,18 @@ def draw_node(node, gltf):
     gl.glPopMatrix()
 
 
-def draw_scene(scene, gltf):
+def render_scene(scene, gltf):
     gl.glMatrixMode(gl.GL_MODELVIEW)
     gl.glLoadIdentity()
-    for node_name in scene['nodes']:
-        draw_node(gltf['nodes'][node_name], gltf)
+    nodes = [gltf['nodes'][n] for n in scene['nodes']]
+    view_matrix = None
+    for node in nodes:
+        if 'camera' in node:
+            setup_camera(gltf['cameras'][node['camera']])
+            view_matrix = np.linalg.inv(np.array(node['matrix'], dtype=np.float32).reshape((4, 4)))
+            break
+    for node in nodes:
+        draw_node(node, gltf, view_matrix=view_matrix)
 
 
 def show_gltf(gltf, uri_path, scene_name=None):
@@ -303,8 +314,8 @@ def show_gltf(gltf, uri_path, scene_name=None):
 
     # testing >>>>>>
     while not glfw.WindowShouldClose(window):
-        gl.glClear(gl.GL_COLOR_BUFFER_BIT)
-        draw_scene(scene, gltf)
+        gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)
+        render_scene(scene, gltf)
         glfw.SwapBuffers(window)
         glfw.PollEvents()
     # <<<<<< testing
