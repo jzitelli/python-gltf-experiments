@@ -10,6 +10,8 @@ import cyglfw3 as glfw
 
 import PIL.Image as Image
 
+import numpy as np
+
 try: # python 3.3 or later
     from types import MappingProxyType
 except ImportError as err:
@@ -255,14 +257,32 @@ def draw_mesh(mesh, gltf):
 
 
 def draw_node(node, gltf):
+    matrix = np.array(node['matrix'], dtype=np.float32).reshape((4,4))
+    gl.glPushMatrix()
+    gl.glMultMatrixf(matrix)
+    if 'camera' in node:
+        camera = gltf['cameras'][node['camera']]
+        gl.glMatrixMode(gl.GL_PROJECTION)
+        if 'perspective' in camera:
+            #gl.glLoadIdentity()
+            glu.gluPerspective(camera['perspective']['yfov'],
+                               camera['perspective']['aspectRatio'],
+                               camera['perspective']['znear'],
+                               camera['perspective']['zfar'])
+        if 'orthographic' in camera:
+            pass # TODO
+        gl.glMatrixMode(gl.GL_MODELVIEW)
     meshes = node.get('meshes', [])
     for mesh_name in meshes:
         draw_mesh(gltf['meshes'][mesh_name], gltf)
     for child in node['children']:
         draw_node(gltf['nodes'][child], gltf)
-        
+    gl.glPopMatrix()
+
 
 def draw_scene(scene, gltf):
+    gl.glMatrixMode(gl.GL_MODELVIEW)
+    gl.glLoadIdentity()
     for node_name in scene['nodes']:
         draw_node(gltf['nodes'][node_name], gltf)
 
