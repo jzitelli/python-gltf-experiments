@@ -58,10 +58,7 @@ def setup_glfw(width=640, height=480):
     # set up glfw callbacks:
     def on_resize(window, width, height):
         gl.glViewport(0, 0, width, height)
-        gl.glMatrixMode(gl.GL_PROJECTION)
-        gl.glLoadIdentity()
         glu.gluPerspective(50, float(width) / height, 0.1, 1000)
-        gl.glMatrixMode(gl.GL_MODELVIEW)
     glfw.SetWindowSizeCallback(window, on_resize)
     def on_keydown(window, key, scancode, action, mods):
         # press ESC to quit:
@@ -175,7 +172,7 @@ def setup_buffers(gltf, uri_path):
         print('* created buffer "%s"' % bufferView_name)
 
 
-def setup_program_state(primitive, gltf):
+def setup_program_state(primitive, gltf, modelview_matrix=None, projection_matrix=None, view_matrix=None):
     material = gltf['materials'][primitive['material']]
     technique = gltf['techniques'][material['technique']]
     program = gltf['programs'][technique['program']]
@@ -201,14 +198,32 @@ def setup_program_state(primitive, gltf):
             gl.glEnableVertexAttribArray(attribute_index)
             setup_program_state.enabled_locations.append(attribute_index)
 
+    if modelview_matrix is None:
+        normal_matrix = np.eye(3, dtype=np.float32)
+    else:
+        normal_matrix = np.array(np.linalg.inv(modelview_matrix).T[:3, :3])
     material_values = material.get('values', {})
     for uniform_name, parameter_name in technique['uniforms'].items():
         parameter = technique['parameters'][parameter_name]
+        location = gl.glGetUniformLocation(program['id'], uniform_name)
         semantic = parameter.get('semantic')
-        if semantic:
-            pass # TODO
+        if 'semantic' in parameter:
+            if parameter['semantic'] == 'MODELVIEW':
+                if 'node' in parameter:
+                    world_matrix = gltf['nodes'][parameter['node']]['world_matrix']
+                    if view_matrix is not None:
+                        gl.glUniformMatrix4fv(location, 1, False, view_matrix @ world_matrix)
+                    else:
+                        gl.glUniformMatrix4fv(location, 1, False, world_matrix)
+                else:
+                    gl.glUniformMatrix4fv(location, 1, False, modelview_matrix)
+            elif parameter['semantic'] == 'PROJECTION':
+                gl.glUniformMatrix4fv(location, 1, False, projection_matrix)
+            elif parameter['semantic'] == 'MODELVIEWINVERSETRANSPOSE':
+                gl.glUniformMatrix3fv(location, 1, False, normal_matrix)
+            else:
+                raise Exception('unhandled semantic: %s' % parameter['semantic'])
         else:
-            location = gl.glGetUniformLocation(program['id'], uniform_name)
             value = material_values.get(parameter_name, parameter.get('value'))
             if value:
                 if parameter['type'] == gl.GL_SAMPLER_2D:
@@ -231,11 +246,11 @@ def end_program_state():
         gl.glDisableVertexAttribArray(loc)
 
 
-def draw_primitive(primitive, gltf):
+def draw_primitive(primitive, gltf, modelview_matrix=None, projection_matrix=None, view_matrix=None):
     accessors = gltf['accessors']
     bufferViews = gltf['bufferViews']
 
-    setup_program_state(primitive, gltf)
+    setup_program_state(primitive, gltf, modelview_matrix=modelview_matrix, projection_matrix=projection_matrix, view_matrix=view_matrix)
 
     index_accessor = accessors[primitive['indices']]
     index_bufferView = bufferViews[index_accessor['bufferView']]
@@ -251,51 +266,59 @@ def draw_primitive(primitive, gltf):
     end_program_state()
 
 
-def draw_mesh(mesh, gltf):
+def draw_mesh(mesh, gltf, modelview_matrix=None, projection_matrix=None, view_matrix=None):
     for primitive in mesh['primitives']:
-        draw_primitive(primitive, gltf)
+        draw_primitive(primitive, gltf, modelview_matrix=modelview_matrix, projection_matrix=projection_matrix, view_matrix=view_matrix)
 
 
-def setup_camera(camera):
-    gl.glMatrixMode(gl.GL_PROJECTION)
+def calc_projection_matrix(camera):
     if 'perspective' in camera:
-        gl.glLoadIdentity()
-        glu.gluPerspective(camera['perspective']['yfov'],
-                           camera['perspective']['aspectRatio'],
-                           camera['perspective']['znear'],
-                           camera['perspective']['zfar'])
+        f = 1 / np.tan(np.pi * camera['perspective']['yfov'] / 180 / 2)
+        znear, zfar = camera['perspective']['znear'], camera['perspective']['zfar']
+        projection_matrix = np.array([[f / camera['perspective']['aspectRatio'], 0, 0, 0],
+                                      [0, f, 0, 0],
+                                      [0, 0, (znear + zfar) / (znear - zfar), 2 * znear * zfar / (znear - zfar)],
+                                      [0, 0, -1, 0]])
     elif 'orthographic' in camera:
         pass # TODO
-    gl.glMatrixMode(gl.GL_MODELVIEW)
+    return projection_matrix
 
     
-def draw_node(node, gltf, view_matrix=None):
-    matrix = np.array(node['matrix'], dtype=np.float32).reshape((4,4))
-    gl.glPushMatrix()
-    if view_matrix is not None:
-        gl.glMultMatrixf(matrix @ view_matrix)
+def draw_node(node, gltf, modelview_matrix=None, projection_matrix=None, view_matrix=None):
+    if view_matrix is None:
+        modelview_matrix = node['world_matrix']
     else:
-        gl.glMultMatrixf(matrix)
+        modelview_matrix = view_matrix @ node['world_matrix']
     meshes = node.get('meshes', [])
     for mesh_name in meshes:
-        draw_mesh(gltf['meshes'][mesh_name], gltf)
+        draw_mesh(gltf['meshes'][mesh_name], gltf, modelview_matrix=modelview_matrix, projection_matrix=projection_matrix, view_matrix=view_matrix)
     for child in node['children']:
-        draw_node(gltf['nodes'][child], gltf)
-    gl.glPopMatrix()
+        draw_node(gltf['nodes'][child], gltf, modelview_matrix=modelview_matrix, projection_matrix=projection_matrix, view_matrix=view_matrix)
 
 
+def update_world_matrix(node, gltf, world_matrix=None):
+    matrix = np.array(node['matrix'], dtype=np.float32).reshape((4, 4))
+    if world_matrix is None:
+        world_matrix = matrix
+    else:
+        world_matrix = world_matrix.dot(matrix)
+    node['world_matrix'] = world_matrix
+    for child in [gltf['nodes'][n] for n in node['children']]:
+        update_world_matrix(child, gltf, world_matrix=world_matrix)
+
+                            
 def render_scene(scene, gltf):
-    gl.glMatrixMode(gl.GL_MODELVIEW)
-    gl.glLoadIdentity()
     nodes = [gltf['nodes'][n] for n in scene['nodes']]
     view_matrix = None
     for node in nodes:
         if 'camera' in node:
-            setup_camera(gltf['cameras'][node['camera']])
+            projection_matrix = calc_projection_matrix((gltf['cameras'][node['camera']]))
             view_matrix = np.linalg.inv(np.array(node['matrix'], dtype=np.float32).reshape((4, 4)))
             break
     for node in nodes:
-        draw_node(node, gltf, view_matrix=view_matrix)
+        update_world_matrix(node, gltf)
+    for node in nodes:
+        draw_node(node, gltf, projection_matrix=projection_matrix, view_matrix=view_matrix)
 
 
 def show_gltf(gltf, uri_path, scene_name=None):
