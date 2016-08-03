@@ -1,7 +1,7 @@
 import sys
 import json
 import os.path
-from ctypes import c_void_p, c_float, c_uint, sizeof
+from ctypes import c_void_p, c_float, c_uint, sizeof, c_char_p
 import base64
 
 import OpenGL.GL as gl
@@ -71,7 +71,6 @@ def setup_glfw(width=900, height=600):
     return window
 
 
-
 def calc_ortho_matrix(left=-10, right=10, bottom=-10, top=10, znear=0.1, zfar=1000):
     dx = right - left
     dy = top - bottom
@@ -79,10 +78,10 @@ def calc_ortho_matrix(left=-10, right=10, bottom=-10, top=10, znear=0.1, zfar=10
     rx = -(right + left) / (right - left)
     ry = -(top + bottom) / (top - bottom)
     rz = -(zfar + znear) / (zfar - znear)
-    return np.matrix([[2.0/dx, 0,            0, rx],
-                      [0,      2.0/dy,       0, ry],
-                      [0,      0,      -2.0/dz, rz],
-                      [0,      0,            0,  1]])
+    return np.array([[2.0/dx, 0,            0, rx],
+                     [0,      2.0/dy,       0, ry],
+                     [0,      0,      -2.0/dz, rz],
+                     [0,      0,            0,  1]])
 
 
 def calc_projection_matrix(yfov=np.pi/3, aspectRatio=1.5, znear=0.1, zfar=1000, **kwargs):
@@ -148,28 +147,37 @@ def setup_textures(gltf, uri_path):
             print('* failed to load image "%s":\n%s' % (image_name, err))
             sys.exit(1)
     for texture_name, texture in gltf.get('textures', {}).items():
+        sampler = gltf['samplers'][texture['sampler']]
         texture_id = gl.glGenTextures(1)
+        #gl.glActiveTexture(gl.GL_TEXTURE0+0)
         gl.glBindTexture(texture['target'], texture_id)
         # following glview.cc example for now...
-        gl.glPixelStorei(gl.GL_UNPACK_ALIGNMENT, 1)
+        # gl.glPixelStorei(gl.GL_UNPACK_ALIGNMENT, 1)
         pixel_format = gl.GL_RGB if image.get('component') == 3 else gl.GL_RGBA
+        gl.glTexParameterf(texture['target'], gl.GL_TEXTURE_MIN_FILTER, sampler.get('minFilter', 9986))
+        gl.glTexParameterf(texture['target'], gl.GL_TEXTURE_MAG_FILTER, sampler.get('magFilter', 9729))
+        gl.glTexParameterf(texture['target'], gl.GL_TEXTURE_WRAP_S, sampler.get('wrapS', 10497))
+        gl.glTexParameterf(texture['target'], gl.GL_TEXTURE_WRAP_T, sampler.get('wrapT', 10497))
+        # gl.glTexImage2D(texture['target'], 0, pixel_format,
+        #                 pil_image.width, pil_image.height, 0,
+        #                 pixel_format, gl.GL_UNSIGNED_BYTE,
+        #                 list(pil_image.getdata())) # TODO: better way to pass data?
         gl.glTexImage2D(texture['target'], 0, texture['internalFormat'],
                         pil_image.width, pil_image.height, 0,
-                        pixel_format, texture['type'],
+                        texture['format'], texture['type'],
                         list(pil_image.getdata())) # TODO: better way to pass data?
-        sampler = gltf['samplers'][texture['sampler']]
-        # sampler_id = gl.glGenSamplers(1)
-        # gl.glBindSampler(gl.GL_TEXTURE0, sampler_id)
-        # gl.glSamplerParameteriv(sampler_id, gl.GL_TEXTURE_MIN_FILTER, sampler.get('minFilter', 9986))
-        # gl.glSamplerParameteriv(sampler_id, gl.GL_TEXTURE_MAG_FILTER, sampler.get('magFilter', 9729))
-        # gl.glSamplerParameteriv(sampler_id, gl.GL_TEXTURE_WRAP_S, sampler.get('wrapS', 10497))
-        # gl.glSamplerParameteriv(sampler_id, gl.GL_TEXTURE_WRAP_T, sampler.get('wrapS', 10497))
-        # sampler['id'] = sampler_id
+        sampler_id = gl.glGenSamplers(1)
+        gl.glSamplerParameteri(sampler_id, gl.GL_TEXTURE_MIN_FILTER, sampler.get('minFilter', 9986))
+        gl.glSamplerParameteri(sampler_id, gl.GL_TEXTURE_MAG_FILTER, sampler.get('magFilter', 9729))
+        gl.glSamplerParameteri(sampler_id, gl.GL_TEXTURE_WRAP_S, sampler.get('wrapS', 10497))
+        gl.glSamplerParameteri(sampler_id, gl.GL_TEXTURE_WRAP_T, sampler.get('wrapT', 10497))
+        sampler['id'] = sampler_id
+        gl.glGenerateMipmap(texture['target'])
         if gl.glGetError() != gl.GL_NO_ERROR:
             print('* failed to create texture "%s"' % texture_name)
             sys.exit(1)
         texture['id'] = texture_id
-        gl.glBindTexture(texture['target'], 0)
+        #gl.glBindTexture(texture['target'], 0)
         print('* created texture "%s"' % texture_name)
 
 
@@ -185,6 +193,7 @@ def setup_buffers(gltf, uri_path):
                 filename = os.path.join(uri_path, buffer['uri'])
                 if buffer['type'] == 'arraybuffer':
                     data_buffers[buffer_name] = open(filename, 'rb').read()
+                    #data_buffers[buffer_name] = np.frombuffer(open(filename, 'rb').read(), dtype=np.float64)
                 elif buffer['type'] == 'text':
                     pass # TODO
                 print('* loaded buffer "%s" (from %s)' % (buffer_name, filename))
@@ -212,11 +221,12 @@ def setup_program_state(primitive, gltf,
     program = gltf['programs'][technique['program']]
     accessors = gltf['accessors']
     bufferViews = gltf['bufferViews']
-    textures = gltf.get('textures', [])
+    textures = gltf.get('textures', {})
+    samplers = gltf.get('samplers', {})
     for state in technique.get('states', {'enable': []})['enable']:
         gl.glEnable(state)
     gl.glUseProgram(program['id'])
-    normal_matrix = np.linalg.inv(modelview_matrix)[:3, :3].T
+    normal_matrix = np.ascontiguousarray(np.linalg.inv(modelview_matrix).T[:3, :3])
     material_values = material.get('values', {})
     for uniform_name, parameter_name in technique['uniforms'].items():
         parameter = technique['parameters'][parameter_name]
@@ -237,7 +247,7 @@ def setup_program_state(primitive, gltf,
                 if 'node' in parameter:
                     raise Exception()
                 else:
-                    gl.glUniformMatrix3fv(location, 1, True, np.ascontiguousarray(normal_matrix))
+                    gl.glUniformMatrix3fv(location, 1, True, normal_matrix)
             else:
                 raise Exception('unhandled semantic: %s' % parameter['semantic'])
         else:
@@ -245,8 +255,9 @@ def setup_program_state(primitive, gltf,
             if value:
                 if parameter['type'] == gl.GL_SAMPLER_2D:
                     texture = textures[value]
-                    gl.glActiveTexture(gl.GL_TEXTURE0)
+                    gl.glActiveTexture(gl.GL_TEXTURE0+0)
                     gl.glBindTexture(texture['target'], texture['id'])
+                    gl.glBindSampler(0, samplers[texture['sampler']]['id'])
                     gl.glUniform1i(location, 0)
                 elif parameter['type'] == gl.GL_FLOAT:
                     gl.glUniform1f(location, value)
@@ -268,10 +279,10 @@ def setup_program_state(primitive, gltf,
             bufferView = bufferViews[accessor['bufferView']]
             buffer_id = bufferView['id']
             location = program['attribute_locations'][attribute_name]
-            #gl.glBindBuffer(bufferView['target'], buffer_id)
-            gl.glVertexAttribPointer(location, GLTF_BUFFERVIEW_TYPE_SIZES[accessor['type']],
-                                     accessor['componentType'], False, accessor['byteStride'], accessor['byteOffset'])
             gl.glEnableVertexAttribArray(location)
+            gl.glBindBuffer(bufferView['target'], buffer_id)
+            gl.glVertexAttribPointer(location, GLTF_BUFFERVIEW_TYPE_SIZES[accessor['type']],
+                                     accessor['componentType'], False, accessor['byteStride'], c_void_p(accessor['byteOffset']))
             setup_program_state.enabled_locations.append(location)
         else:
             raise Exception()
@@ -295,6 +306,7 @@ def draw_primitive(primitive, gltf,
     gl.glBindBuffer(index_bufferView['target'], index_bufferView['id'])
     gl.glDrawElements(primitive['mode'], index_accessor['count'], index_accessor['componentType'],
                       c_void_p(index_accessor['byteOffset']))
+                      #None)
     if gl.glGetError() != gl.GL_NO_ERROR:
         print('* error drawing elements')
         sys.exit(1)
@@ -339,9 +351,11 @@ def render_scene(scene, gltf):
     for node in nodes:
         update_world_matrices(node, gltf)
     #projection_matrix = calc_ortho_matrix(-20, 20, -15, 15, 0.1, 100)
-    projection_matrix = calc_projection_matrix(aspectRatio=1.5, yfov=np.pi/2)
+    projection_matrix = calc_projection_matrix(aspectRatio=1.5, yfov=np.pi/3)
     view_matrix = np.eye(4)
-    view_matrix[2, 3] = -20
+    view_matrix[0, 3] = 20
+    #view_matrix[1, 3] = -5
+    view_matrix[2, 3] = -100
     for node in nodes:
         if 'camera' in node:
             projection_matrix = calc_projection_matrix(**gltf['cameras'][node['camera']])
