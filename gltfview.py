@@ -2,6 +2,7 @@ import sys
 import json
 import os.path
 from ctypes import c_void_p
+import base64
 
 import OpenGL.GL as gl
 import OpenGL.GLU as glu
@@ -33,7 +34,7 @@ class JSobject(dict):
                 d[k] = v
         self.__dict__.update(d)
         self.update(d)
-        
+
 
 GLTF_BUFFERVIEW_TYPE_SIZES = MappingProxyType({
     'SCALAR': 1,
@@ -46,7 +47,7 @@ GLTF_BUFFERVIEW_TYPE_SIZES = MappingProxyType({
 })
 
 
-def setup_glfw(width=640, height=480):
+def setup_glfw(width=900, height=600):
     if not glfw.Init():
         print('* failed to initialize glfw')
         sys.exit(1)
@@ -58,7 +59,6 @@ def setup_glfw(width=640, height=480):
     # set up glfw callbacks:
     def on_resize(window, width, height):
         gl.glViewport(0, 0, width, height)
-        glu.gluPerspective(50, float(width) / height, 0.1, 1000)
     glfw.SetWindowSizeCallback(window, on_resize)
     def on_keydown(window, key, scancode, action, mods):
         # press ESC to quit:
@@ -69,19 +69,29 @@ def setup_glfw(width=640, height=480):
     print('GL_VERSION: %s' % gl.glGetString(gl.GL_VERSION))
     on_resize(window, width, height)
     return window
+        
+
+def calc_projection_matrix(yfov=np.pi/3, aspectRatio=1.5, znear=0.1, zfar=1000, **kwargs):
+    f = 1 / np.tan(yfov / 2)
+    return np.array([[f / aspectRatio, 0, 0, 0],
+                     [0, f, 0, 0],
+                     [0, 0, (znear + zfar) / (znear - zfar), 2 * znear * zfar / (znear - zfar)],
+                     [0, 0, -1, 0]], dtype=np.float32)
 
 
 def setup_shaders(gltf, uri_path):
     for shader_name, shader in gltf['shaders'].items():
-        # TODO: support data URIs
-        shader_str = None
-        try:
-            filename = os.path.join(uri_path, shader['uri'])
-            shader_str = open(filename).read()
-            print('* loaded shader "%s" (from %s):\n%s' % (shader_name, filename, shader_str))
-        except Exception as err:
-            print('* failed to load shader "%s":\n%s' % (shader_name, err))
-            sys.exit(1)
+        uri = shader['uri']
+        if uri.startswith('data:text/plain;base64,'):
+            shader_str = base64.b64decode(uri.split(',')[1])
+        else:
+            try:
+                filename = os.path.join(uri_path, shader['uri'])
+                shader_str = open(filename).read()
+                print('* loaded shader "%s" (from %s):\n%s' % (shader_name, filename, shader_str))
+            except Exception as err:
+                print('* failed to load shader "%s":\n%s' % (shader_name, err))
+                sys.exit(1)
         shader_id = gl.glCreateShader(shader['type'])
         gl.glShaderSource(shader_id, shader_str)
         gl.glCompileShader(shader_id)
@@ -114,7 +124,7 @@ def setup_programs(gltf):
 def setup_textures(gltf, uri_path):
     # TODO: support data URIs
     pil_images = {}
-    for image_name, image in gltf['images'].items():
+    for image_name, image in gltf.get('images', {}).items():
         try:
             filename = os.path.join(uri_path, image['uri'])
             pil_image = Image.open(filename)
@@ -123,7 +133,7 @@ def setup_textures(gltf, uri_path):
         except Exception as err:
             print('* failed to load image "%s":\n%s' % (image_name, err))
             sys.exit(1)
-    for texture_name, texture in gltf['textures'].items():
+    for texture_name, texture in gltf.get('textures', {}).items():
         texture_id = gl.glGenTextures(1)
         gl.glBindTexture(texture['target'], texture_id)
         # following glview.cc example for now...
@@ -133,8 +143,14 @@ def setup_textures(gltf, uri_path):
                         pil_image.width, pil_image.height, 0,
                         pixel_format, texture['type'],
                         list(pil_image.getdata())) # TODO: better way to pass data?
-        # gl.glTexParameterf(texture['target'], gl.GL_TEXTURE_MIN_FILTER, gl.GL_LINEAR)
-        # gl.glTexParameterf(texture['target'], gl.GL_TEXTURE_MAX_FILTER, gl.GL_LINEAR)
+        sampler = gltf['samplers'][texture['sampler']]
+        # sampler_id = gl.glGenSamplers(1)
+        # gl.glBindSampler(gl.GL_TEXTURE0, sampler_id)
+        # gl.glSamplerParameteriv(sampler_id, gl.GL_TEXTURE_MIN_FILTER, sampler.get('minFilter', 9986))
+        # gl.glSamplerParameteriv(sampler_id, gl.GL_TEXTURE_MAG_FILTER, sampler.get('magFilter', 9729))
+        # gl.glSamplerParameteriv(sampler_id, gl.GL_TEXTURE_WRAP_S, sampler.get('wrapS', 10497))
+        # gl.glSamplerParameteriv(sampler_id, gl.GL_TEXTURE_WRAP_T, sampler.get('wrapS', 10497))
+        # sampler['id'] = sampler_id
         if gl.glGetError() != gl.GL_NO_ERROR:
             print('* failed to create texture "%s"' % texture_name)
             sys.exit(1)
@@ -144,20 +160,23 @@ def setup_textures(gltf, uri_path):
 
 
 def setup_buffers(gltf, uri_path):
-    # TODO: support data URIs
     buffers = gltf['buffers']
     data_buffers = {}
     for buffer_name, buffer in buffers.items():
-        try:
-            filename = os.path.join(uri_path, buffer['uri'])
-            if buffer['type'] == 'arraybuffer':
-                data_buffers[buffer_name] = open(filename, 'rb').read()
-            elif buffer['type'] == 'text':
-                pass # TODO
-            print('* loaded buffer "%s" (from %s)' % (buffer_name, filename))
-        except Exception as err:
-            print('* failed to load buffer "%s":\n%s' % (buffer_name, err))
-            sys.exit(1)
+        uri = buffer['uri']
+        if uri.startswith('data:application/octet-stream;base64,'):
+            data_buffers[buffer_name] = base64.b64decode(uri.split(',')[1])
+        else:
+            try:
+                filename = os.path.join(uri_path, buffer['uri'])
+                if buffer['type'] == 'arraybuffer':
+                    data_buffers[buffer_name] = open(filename, 'rb').read()
+                elif buffer['type'] == 'text':
+                    pass # TODO
+                print('* loaded buffer "%s" (from %s)' % (buffer_name, filename))
+            except Exception as err:
+                print('* failed to load buffer "%s":\n%s' % (buffer_name, err))
+                sys.exit(1)
     for bufferView_name, bufferView in gltf['bufferViews'].items():
         buffer_id = gl.glGenBuffers(1)
         byteOffset, byteLength = bufferView['byteOffset'], bufferView['byteLength']
@@ -172,33 +191,41 @@ def setup_buffers(gltf, uri_path):
         print('* created buffer "%s"' % bufferView_name)
 
 
-def setup_program_state(primitive, gltf, modelview_matrix=None, projection_matrix=None, view_matrix=None):
+def setup_program_state(primitive, gltf,
+                        modelview_matrix=None, projection_matrix=None, view_matrix=None):
     material = gltf['materials'][primitive['material']]
     technique = gltf['techniques'][material['technique']]
     program = gltf['programs'][technique['program']]
 
     accessors = gltf['accessors']
     bufferViews = gltf['bufferViews']
-    textures = gltf['textures']
+    textures = gltf.get('textures', [])
 
+    #print('using program %d' % program['id'])
     gl.glUseProgram(program['id'])
 
-    setup_program_state.enabled_locations = []
+    for state in technique.get('states', {'enable': []})['enable']:
+        gl.glEnable(state)
+
     for attribute_name, parameter_name in technique['attributes'].items():
         parameter = technique['parameters'][parameter_name]
         semantic = parameter.get('semantic')
         if semantic:
+            #print('setting up attribute %s (semantic: %s)' % (attribute_name, semantic))
             accessor = accessors[primitive['attributes'][semantic]]
             bufferView = bufferViews[accessor['bufferView']]
             buffer_id = bufferView['id']
-            gl.glBindBuffer(bufferView['target'], buffer_id)
             attribute_index = program['attribute_indices'][attribute_name]
+            gl.glBindBuffer(bufferView['target'], buffer_id)
             gl.glVertexAttribPointer(attribute_index, GLTF_BUFFERVIEW_TYPE_SIZES[accessor['type']],
                                      accessor['componentType'], False, accessor['byteStride'], accessor['byteOffset'])
             gl.glEnableVertexAttribArray(attribute_index)
             setup_program_state.enabled_locations.append(attribute_index)
+        else:
+            #print('unhandled case')
+            sys.exit(1)
 
-    normal_matrix = np.linalg.inv(modelview_matrix[:3, :3].T)
+    normal_matrix = np.linalg.inv(modelview_matrix)[:3, :3].T
     material_values = material.get('values', {})
     for uniform_name, parameter_name in technique['uniforms'].items():
         parameter = technique['parameters'][parameter_name]
@@ -208,16 +235,21 @@ def setup_program_state(primitive, gltf, modelview_matrix=None, projection_matri
             if parameter['semantic'] == 'MODELVIEW':
                 if 'node' in parameter:
                     world_matrix = gltf['nodes'][parameter['node']]['world_matrix']
-                    if view_matrix is not None:
-                        gl.glUniformMatrix4fv(location, 1, True, view_matrix @ world_matrix)
-                    else:
-                        gl.glUniformMatrix4fv(location, 1, True, world_matrix)
+                    gl.glUniformMatrix4fv(location, 1, True, np.ascontiguousarray(view_matrix.dot(world_matrix), dtype=np.float32))
                 else:
-                    gl.glUniformMatrix4fv(location, 1, True, modelview_matrix)
+                    gl.glUniformMatrix4fv(location, 1, True, np.ascontiguousarray(modelview_matrix, dtype=np.float32))
             elif parameter['semantic'] == 'PROJECTION':
-                gl.glUniformMatrix4fv(location, 1, True, projection_matrix)
+                if 'node' in parameter:
+                    #print('unhandled case')
+                    sys.exit(1)
+                else:
+                    gl.glUniformMatrix4fv(location, 1, True, np.ascontiguousarray(projection_matrix, dtype=np.float32))
             elif parameter['semantic'] == 'MODELVIEWINVERSETRANSPOSE':
-                gl.glUniformMatrix3fv(location, 1, True, normal_matrix)
+                if 'node' in parameter:
+                    #print('unhandled case')
+                    sys.exit(1)
+                else:
+                    gl.glUniformMatrix3fv(location, 1, True, np.ascontiguousarray(normal_matrix, dtype=np.float32))
             else:
                 raise Exception('unhandled semantic: %s' % parameter['semantic'])
         else:
@@ -225,75 +257,72 @@ def setup_program_state(primitive, gltf, modelview_matrix=None, projection_matri
             if value:
                 if parameter['type'] == gl.GL_SAMPLER_2D:
                     texture = textures[value]
+                    gl.glActiveTexture(gl.GL_TEXTURE0)
                     gl.glBindTexture(texture['target'], texture['id'])
-                    gl.glUniform1i(location, texture['id'])
+                    gl.glUniform1i(location, 0)
                 elif parameter['type'] == gl.GL_FLOAT:
                     gl.glUniform1f(location, value)
+                elif parameter['type'] == gl.GL_FLOAT_VEC2:
+                    gl.glUniform2f(location, *value)
                 elif parameter['type'] == gl.GL_FLOAT_VEC3:
                     gl.glUniform3f(location, *value)
                 elif parameter['type'] == gl.GL_FLOAT_VEC4:
                     gl.glUniform4f(location, *value)
                 else:
                     print('* unhandled type: %s' % parameter['type'])
+            else:
+                raise Exception('no value provided')
 setup_program_state.enabled_locations = []
 
 
 def end_program_state():
     for loc in setup_program_state.enabled_locations:
         gl.glDisableVertexAttribArray(loc)
+    setup_program_state.enabled_locations = []
+    
 
-
-def draw_primitive(primitive, gltf, modelview_matrix=None, projection_matrix=None, view_matrix=None):
+def draw_primitive(primitive, gltf,
+                   modelview_matrix=None, projection_matrix=None, view_matrix=None):
     accessors = gltf['accessors']
     bufferViews = gltf['bufferViews']
-
-    setup_program_state(primitive, gltf, modelview_matrix=modelview_matrix, projection_matrix=projection_matrix, view_matrix=view_matrix)
-
+    setup_program_state(primitive, gltf,
+                        modelview_matrix=modelview_matrix, projection_matrix=projection_matrix, view_matrix=view_matrix)
     index_accessor = accessors[primitive['indices']]
     index_bufferView = bufferViews[index_accessor['bufferView']]
     gl.glBindBuffer(index_bufferView['target'], index_bufferView['id'])
-
     # draw:
     gl.glDrawElements(primitive['mode'], index_accessor['count'], index_accessor['componentType'],
                       c_void_p(index_accessor['byteOffset']))
     if gl.glGetError() != gl.GL_NO_ERROR:
         print('* error drawing elements')
         sys.exit(1)
-
     end_program_state()
 
 
-def draw_mesh(mesh, gltf, modelview_matrix=None, projection_matrix=None, view_matrix=None):
+def draw_mesh(mesh, gltf,
+              modelview_matrix=None, projection_matrix=None, view_matrix=None):
     for primitive in mesh['primitives']:
-        draw_primitive(primitive, gltf, modelview_matrix=modelview_matrix, projection_matrix=projection_matrix, view_matrix=view_matrix)
+        draw_primitive(primitive, gltf,
+                       modelview_matrix=modelview_matrix, projection_matrix=projection_matrix, view_matrix=view_matrix)
 
 
-def calc_projection_matrix(camera):
-    if 'perspective' in camera:
-        f = 1 / np.tan(camera['perspective']['yfov'] / 2)
-        znear, zfar = camera['perspective']['znear'], camera['perspective']['zfar']
-        projection_matrix = np.array([[f / camera['perspective']['aspectRatio'], 0, 0, 0],
-                                      [0, f, 0, 0],
-                                      [0, 0, (znear + zfar) / (znear - zfar), 2 * znear * zfar / (znear - zfar)],
-                                      [0, 0, -1, 0]], dtype=np.float32)
-    elif 'orthographic' in camera:
-        pass # TODO
-    return projection_matrix
-
-    
-def draw_node(node, gltf, projection_matrix=None, view_matrix=None):
+def draw_node(node, gltf,
+              projection_matrix=None, view_matrix=None):
     if view_matrix is None:
         modelview_matrix = node['world_matrix']
     else:
         modelview_matrix = view_matrix.dot(node['world_matrix'])
     meshes = node.get('meshes', [])
     for mesh_name in meshes:
-        draw_mesh(gltf['meshes'][mesh_name], gltf, modelview_matrix=modelview_matrix, projection_matrix=projection_matrix, view_matrix=view_matrix)
+        #print('drawing mesh %s...' % mesh_name)
+        draw_mesh(gltf['meshes'][mesh_name], gltf,
+                  modelview_matrix=modelview_matrix, projection_matrix=projection_matrix, view_matrix=view_matrix)
     for child in node['children']:
-        draw_node(gltf['nodes'][child], gltf, projection_matrix=projection_matrix, view_matrix=view_matrix)
+        draw_node(gltf['nodes'][child], gltf,
+                  projection_matrix=projection_matrix, view_matrix=view_matrix)
 
 
-def update_world_matrix(node, gltf, world_matrix=None):
+def update_world_matrices(node, gltf, world_matrix=None):
     matrix = np.array(node['matrix'], dtype=np.float32).reshape((4, 4)).T
     if world_matrix is None:
         world_matrix = matrix
@@ -301,18 +330,20 @@ def update_world_matrix(node, gltf, world_matrix=None):
         world_matrix = world_matrix.dot(matrix)
     node['world_matrix'] = world_matrix
     for child in [gltf['nodes'][n] for n in node['children']]:
-        update_world_matrix(child, gltf, world_matrix=world_matrix)
+        update_world_matrices(child, gltf, world_matrix=world_matrix)
 
-                            
+
 def render_scene(scene, gltf):
     nodes = [gltf['nodes'][n] for n in scene['nodes']]
     for node in nodes:
-        if 'camera' in node:
-            projection_matrix = calc_projection_matrix((gltf['cameras'][node['camera']]))
-            view_matrix = np.linalg.inv(np.array(node['matrix'], dtype=np.float32).reshape((4, 4)).T)
-            break
+        update_world_matrices(node, gltf)
+    projection_matrix = calc_projection_matrix(aspectRatio=640/480)
+    view_matrix = np.eye(4, dtype=np.float32); view_matrix[2,3] = -3
     for node in nodes:
-        update_world_matrix(node, gltf)
+        if 'camera' in node:
+            projection_matrix = calc_projection_matrix(**gltf['cameras'][node['camera']])
+            view_matrix = np.linalg.inv(node['world_matrix'])
+            break
     for node in nodes:
         draw_node(node, gltf, projection_matrix=projection_matrix, view_matrix=view_matrix)
 
@@ -321,7 +352,6 @@ def show_gltf(gltf, uri_path, scene_name=None):
     if scene_name is None:
         scene_name = gltf['scene']
     scene = gltf['scenes'][scene_name]
-
     window = setup_glfw()
 
     setup_shaders(gltf, uri_path)
@@ -330,13 +360,15 @@ def show_gltf(gltf, uri_path, scene_name=None):
     setup_buffers(gltf, uri_path)
 
     sys.stdout.flush()
+    
+    gl.glClearColor(0.1, 0.2, 0.3, 1.0);
 
     # testing >>>>>>
     while not glfw.WindowShouldClose(window):
-        gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)
+        glfw.PollEvents()
+        gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT);
         render_scene(scene, gltf)
         glfw.SwapBuffers(window)
-        glfw.PollEvents()
     # <<<<<< testing
 
     # cleanup:
