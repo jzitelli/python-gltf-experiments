@@ -71,6 +71,20 @@ def setup_glfw(width=900, height=600):
     return window
         
 
+
+def calc_ortho_matrix(left=-10, right=10, bottom=-10, top=10, znear=0.1, zfar=1000):
+    dx = right - left
+    dy = top - bottom
+    dz = zfar - znear
+    rx = -(right + left) / (right - left)
+    ry = -(top + bottom) / (top - bottom)
+    rz = -(zfar + znear) / (zfar - znear)
+    return np.matrix([[2.0/dx, 0,            0, rx],
+                      [0,      2.0/dy,       0, ry],
+                      [0,      0,      -2.0/dz, rz],
+                      [0,      0,            0,  1]], dtype=np.float32)
+
+
 def calc_projection_matrix(yfov=np.pi/3, aspectRatio=1.5, znear=0.1, zfar=1000, **kwargs):
     f = 1 / np.tan(yfov / 2)
     return np.array([[f / aspectRatio, 0, 0, 0],
@@ -201,12 +215,9 @@ def setup_program_state(primitive, gltf,
     bufferViews = gltf['bufferViews']
     textures = gltf.get('textures', [])
 
-    #print('using program %d' % program['id'])
     gl.glUseProgram(program['id'])
-
     for state in technique.get('states', {'enable': []})['enable']:
         gl.glEnable(state)
-
     for attribute_name, parameter_name in technique['attributes'].items():
         parameter = technique['parameters'][parameter_name]
         semantic = parameter.get('semantic')
@@ -222,9 +233,7 @@ def setup_program_state(primitive, gltf,
             gl.glEnableVertexAttribArray(attribute_index)
             setup_program_state.enabled_locations.append(attribute_index)
         else:
-            #print('unhandled case')
-            sys.exit(1)
-
+            raise Exception()
     normal_matrix = np.linalg.inv(modelview_matrix)[:3, :3].T
     material_values = material.get('values', {})
     for uniform_name, parameter_name in technique['uniforms'].items():
@@ -240,14 +249,12 @@ def setup_program_state(primitive, gltf,
                     gl.glUniformMatrix4fv(location, 1, True, np.ascontiguousarray(modelview_matrix, dtype=np.float32))
             elif parameter['semantic'] == 'PROJECTION':
                 if 'node' in parameter:
-                    #print('unhandled case')
-                    sys.exit(1)
+                    raise Exception()
                 else:
                     gl.glUniformMatrix4fv(location, 1, True, np.ascontiguousarray(projection_matrix, dtype=np.float32))
             elif parameter['semantic'] == 'MODELVIEWINVERSETRANSPOSE':
                 if 'node' in parameter:
-                    #print('unhandled case')
-                    sys.exit(1)
+                    raise Exception()
                 else:
                     gl.glUniformMatrix3fv(location, 1, True, np.ascontiguousarray(normal_matrix, dtype=np.float32))
             else:
@@ -269,7 +276,7 @@ def setup_program_state(primitive, gltf,
                 elif parameter['type'] == gl.GL_FLOAT_VEC4:
                     gl.glUniform4f(location, *value)
                 else:
-                    print('* unhandled type: %s' % parameter['type'])
+                    raise Exception('* unhandled type: %s' % parameter['type'])
             else:
                 raise Exception('no value provided')
 setup_program_state.enabled_locations = []
@@ -279,7 +286,7 @@ def end_program_state():
     for loc in setup_program_state.enabled_locations:
         gl.glDisableVertexAttribArray(loc)
     setup_program_state.enabled_locations = []
-    
+
 
 def draw_primitive(primitive, gltf,
                    modelview_matrix=None, projection_matrix=None, view_matrix=None):
@@ -290,7 +297,6 @@ def draw_primitive(primitive, gltf,
     index_accessor = accessors[primitive['indices']]
     index_bufferView = bufferViews[index_accessor['bufferView']]
     gl.glBindBuffer(index_bufferView['target'], index_bufferView['id'])
-    # draw:
     gl.glDrawElements(primitive['mode'], index_accessor['count'], index_accessor['componentType'],
                       c_void_p(index_accessor['byteOffset']))
     if gl.glGetError() != gl.GL_NO_ERROR:
@@ -314,7 +320,6 @@ def draw_node(node, gltf,
         modelview_matrix = view_matrix.dot(node['world_matrix'])
     meshes = node.get('meshes', [])
     for mesh_name in meshes:
-        #print('drawing mesh %s...' % mesh_name)
         draw_mesh(gltf['meshes'][mesh_name], gltf,
                   modelview_matrix=modelview_matrix, projection_matrix=projection_matrix, view_matrix=view_matrix)
     for child in node['children']:
@@ -337,15 +342,18 @@ def render_scene(scene, gltf):
     nodes = [gltf['nodes'][n] for n in scene['nodes']]
     for node in nodes:
         update_world_matrices(node, gltf)
-    projection_matrix = calc_projection_matrix(aspectRatio=640/480)
-    view_matrix = np.eye(4, dtype=np.float32); view_matrix[2,3] = -3
+    projection_matrix = calc_ortho_matrix(-20, 20, -15, 15, 0.1, 100)
+    #projection_matrix = calc_projection_matrix(aspectRatio=640/480)
+    view_matrix = np.eye(4, dtype=np.float32)
+    view_matrix[2, 3] = -20
     for node in nodes:
         if 'camera' in node:
             projection_matrix = calc_projection_matrix(**gltf['cameras'][node['camera']])
             view_matrix = np.linalg.inv(node['world_matrix'])
             break
     for node in nodes:
-        draw_node(node, gltf, projection_matrix=projection_matrix, view_matrix=view_matrix)
+        draw_node(node, gltf,
+                  projection_matrix=projection_matrix, view_matrix=view_matrix)
 
 
 def show_gltf(gltf, uri_path, scene_name=None):
