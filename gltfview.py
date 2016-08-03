@@ -136,23 +136,13 @@ def setup_textures(gltf, uri_path):
     for texture_name, texture in gltf.get('textures', {}).items():
         sampler = gltf['samplers'][texture['sampler']]
         texture_id = gl.glGenTextures(1)
-
-        gl.glActiveTexture(gl.GL_TEXTURE0+0)
-
         gl.glBindTexture(texture['target'], texture_id)
-
-        # gl.glTexParameterf(texture['target'], gl.GL_TEXTURE_MIN_FILTER, sampler.get('minFilter', 9986))
-        # gl.glTexParameterf(texture['target'], gl.GL_TEXTURE_MAG_FILTER, sampler.get('magFilter', 9729))
-        # gl.glTexParameterf(texture['target'], gl.GL_TEXTURE_WRAP_S, sampler.get('wrapS', 10497))
-        # gl.glTexParameterf(texture['target'], gl.GL_TEXTURE_WRAP_T, sampler.get('wrapT', 10497))
-
         sampler_id = gl.glGenSamplers(1)
         gl.glSamplerParameteri(sampler_id, gl.GL_TEXTURE_MIN_FILTER, sampler.get('minFilter', 9986))
         gl.glSamplerParameteri(sampler_id, gl.GL_TEXTURE_MAG_FILTER, sampler.get('magFilter', 9729))
         gl.glSamplerParameteri(sampler_id, gl.GL_TEXTURE_WRAP_S, sampler.get('wrapS', 10497))
         gl.glSamplerParameteri(sampler_id, gl.GL_TEXTURE_WRAP_T, sampler.get('wrapT', 10497))
         sampler['id'] = sampler_id
-
         gl.glPixelStorei(gl.GL_UNPACK_ALIGNMENT, 1)
         if texture['type'] != gl.GL_UNSIGNED_BYTE:
             raise Exception('TODO')
@@ -162,7 +152,6 @@ def setup_textures(gltf, uri_path):
                         gl.GL_RGB, #texture['format'],
                         texture['type'],
                         np.array(list(pil_image.getdata()), dtype=(np.ubyte if texture['type'] == gl.GL_UNSIGNED_BYTE else np.ushort)))
-                        #list(pil_image.getdata())) # TODO: better way to pass data?
         gl.glGenerateMipmap(texture['target'])
         if gl.glGetError() != gl.GL_NO_ERROR:
             raise Exception('failed to create texture "%s"' % texture_name)
@@ -208,8 +197,8 @@ def setup_program_state(primitive, gltf,
     textures = gltf.get('textures', {})
     samplers = gltf.get('samplers', {})
     gl.glUseProgram(program['id'])
-    enabled_states = technique.get('states', {}).get('enable', [])
-    for state in enabled_states:
+    setup_program_state.enabled_states = technique.get('states', {}).get('enable', setup_program_state.enabled_states)
+    for state in setup_program_state.enabled_states:
         gl.glEnable(state)
     material_values = material.get('values', {})
     for uniform_name, parameter_name in technique['uniforms'].items():
@@ -271,13 +260,16 @@ def setup_program_state(primitive, gltf,
         else:
             raise Exception('expected a semantic property for attribute "%s"' % attribute_name)
 setup_program_state.enabled_locations = []
+setup_program_state.enabled_states = []
 
 
 def end_program_state():
     for loc in setup_program_state.enabled_locations:
         gl.glDisableVertexAttribArray(loc)
     setup_program_state.enabled_locations = []
-
+    for state in setup_program_state.enabled_states:
+        gl.glDisable(state)
+    setup_program_state.enabled_states = []
 
 def draw_primitive(primitive, gltf,
                    modelview_matrix=None, projection_matrix=None, view_matrix=None, normal_matrix=None):
@@ -355,9 +347,8 @@ def show_gltf(gltf, uri_path, scene_name=None):
     scene = gltf['scenes'][scene_name]
     window = setup_glfw()
 
-    gl.glEnable(gl.GL_CULL_FACE)
-    gl.glEnable(gl.GL_DEPTH_TEST)
-    gl.glDepthFunc(gl.GL_LEQUAL)
+    gl.glClearColor(0.1, 0.2, 0.3, 1.0);
+
     setup_shaders(gltf, uri_path)
     setup_programs(gltf)
     setup_textures(gltf, uri_path)
@@ -365,17 +356,12 @@ def show_gltf(gltf, uri_path, scene_name=None):
 
     sys.stdout.flush()
 
-    gl.glClearColor(0.1, 0.2, 0.3, 1.0);
-
-    # testing >>>>>>
     while not glfw.WindowShouldClose(window):
         glfw.PollEvents()
         gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT);
         render_scene(scene, gltf)
         glfw.SwapBuffers(window)
-    # <<<<<< testing
 
-    # cleanup:
     print('* closing window...')
     glfw.DestroyWindow(window)
     glfw.Terminate()
