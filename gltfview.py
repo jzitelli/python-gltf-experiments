@@ -1,11 +1,10 @@
 import sys
 import json
 import os.path
-from ctypes import c_void_p, c_float, c_uint, sizeof, c_char_p
+from ctypes import c_void_p
 import base64
 
 import OpenGL.GL as gl
-import OpenGL.GLU as glu
 
 import cyglfw3 as glfw
 
@@ -149,35 +148,34 @@ def setup_textures(gltf, uri_path):
     for texture_name, texture in gltf.get('textures', {}).items():
         sampler = gltf['samplers'][texture['sampler']]
         texture_id = gl.glGenTextures(1)
-        #gl.glActiveTexture(gl.GL_TEXTURE0+0)
+        gl.glActiveTexture(gl.GL_TEXTURE0+0)
         gl.glBindTexture(texture['target'], texture_id)
-        # following glview.cc example for now...
-        # gl.glPixelStorei(gl.GL_UNPACK_ALIGNMENT, 1)
-        pixel_format = gl.GL_RGB if image.get('component') == 3 else gl.GL_RGBA
         gl.glTexParameterf(texture['target'], gl.GL_TEXTURE_MIN_FILTER, sampler.get('minFilter', 9986))
         gl.glTexParameterf(texture['target'], gl.GL_TEXTURE_MAG_FILTER, sampler.get('magFilter', 9729))
         gl.glTexParameterf(texture['target'], gl.GL_TEXTURE_WRAP_S, sampler.get('wrapS', 10497))
         gl.glTexParameterf(texture['target'], gl.GL_TEXTURE_WRAP_T, sampler.get('wrapT', 10497))
-        # gl.glTexImage2D(texture['target'], 0, pixel_format,
-        #                 pil_image.width, pil_image.height, 0,
-        #                 pixel_format, gl.GL_UNSIGNED_BYTE,
-        #                 list(pil_image.getdata())) # TODO: better way to pass data?
-        gl.glTexImage2D(texture['target'], 0, texture['internalFormat'],
-                        pil_image.width, pil_image.height, 0,
-                        texture['format'], texture['type'],
-                        list(pil_image.getdata())) # TODO: better way to pass data?
+
         sampler_id = gl.glGenSamplers(1)
         gl.glSamplerParameteri(sampler_id, gl.GL_TEXTURE_MIN_FILTER, sampler.get('minFilter', 9986))
         gl.glSamplerParameteri(sampler_id, gl.GL_TEXTURE_MAG_FILTER, sampler.get('magFilter', 9729))
         gl.glSamplerParameteri(sampler_id, gl.GL_TEXTURE_WRAP_S, sampler.get('wrapS', 10497))
         gl.glSamplerParameteri(sampler_id, gl.GL_TEXTURE_WRAP_T, sampler.get('wrapT', 10497))
         sampler['id'] = sampler_id
+
+        gl.glPixelStorei(gl.GL_UNPACK_ALIGNMENT, 1)
+        pixel_format = gl.GL_RGB if image.get('component') == 3 else gl.GL_RGBA
+        gl.glTexImage2D(texture['target'], 0,
+                        texture['internalFormat'],
+                        pil_image.width, pil_image.height, 0,
+                        gl.GL_RGB, #texture['format'],
+                        texture['type'],
+                        #np.array(list(pil_image.getdata()), dtype=np.ubyte)) # TODO: better way to pass data?
+                        list(pil_image.getdata())) # TODO: better way to pass data?
         gl.glGenerateMipmap(texture['target'])
         if gl.glGetError() != gl.GL_NO_ERROR:
             print('* failed to create texture "%s"' % texture_name)
             sys.exit(1)
         texture['id'] = texture_id
-        #gl.glBindTexture(texture['target'], 0)
         print('* created texture "%s"' % texture_name)
 
 
@@ -226,7 +224,7 @@ def setup_program_state(primitive, gltf,
     for state in technique.get('states', {'enable': []})['enable']:
         gl.glEnable(state)
     gl.glUseProgram(program['id'])
-    normal_matrix = np.ascontiguousarray(np.linalg.inv(modelview_matrix).T[:3, :3])
+    normal_matrix = np.linalg.inv(modelview_matrix).T[:3, :3]
     material_values = material.get('values', {})
     for uniform_name, parameter_name in technique['uniforms'].items():
         parameter = technique['parameters'][parameter_name]
@@ -247,7 +245,7 @@ def setup_program_state(primitive, gltf,
                 if 'node' in parameter:
                     raise Exception()
                 else:
-                    gl.glUniformMatrix3fv(location, 1, True, normal_matrix)
+                    gl.glUniformMatrix3fv(location, 1, True, np.ascontiguousarray(normal_matrix))
             else:
                 raise Exception('unhandled semantic: %s' % parameter['semantic'])
         else:
