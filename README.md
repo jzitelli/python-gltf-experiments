@@ -1,6 +1,7 @@
 # python-gltf-experiments
 
-A sandbox repo of Python-prototyped applications utilizing [glTF](https://github.com/KhronosGroup/glTF).
+A sandbox repo for prototyping Python applications utilizing [glTF](https://github.com/KhronosGroup/glTF).
+
 
 ## Contents:
 
@@ -8,4 +9,11 @@ A sandbox repo of Python-prototyped applications utilizing [glTF](https://github
 
 A basic application for displaying a glTF scene, inspired by the [tinygltfloader glview example](https://github.com/syoyo/tinygltfloader/tree/master/examples/glview).
 
-Dependencies: PyOpenGL, cyglfw3, PIL
+
+## Dependencies:
+
+- [PyOpenGL](http://pyopengl.sourceforge.net)
+- [cyglfw3](https://github.com/adamlwgriffiths/cyglfw3)
+- [PIL](https://pypi.python.org/pypi/PIL)
+- [NumPy](http://www.numpy.org/)
+- [Pyrr](https://github.com/adamlwgriffiths/Pyrr)

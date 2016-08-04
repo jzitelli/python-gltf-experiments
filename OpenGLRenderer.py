@@ -8,7 +8,6 @@ import OpenGL.GL as gl
 import cyglfw3 as glfw
 
 
-from glutils import *
 from gltfutils import *
 
 

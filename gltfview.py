@@ -12,8 +12,10 @@ import PIL.Image as Image
 
 import numpy as np
 
+import pyrr
 
-from glutils import *
+
+#from glutils import *
 from gltfutils import *
 
 
@@ -278,11 +280,18 @@ def render_scene(scene, gltf, projection_matrix=None, view_matrix=None):
         update_world_matrices(node, gltf)
     for node in nodes:
         if 'camera' in node:
-            projection_matrix = calc_projection_matrix(**gltf['cameras'][node['camera']])
+            camera = gltf['cameras'][node['camera']]
+            if 'perspective' in camera:
+                perspective = camera['perspective']
+                #projection_matrix = calc_projection_matrix(**perspective)
+                projection_matrix = pyrr.matrix44.create_perspective_projection_matrix(perspective['yfov'] * (180 / np.pi), perspective['aspectRatio'], perspective['znear'], perspective['zfar']).T
+            elif 'orthographic' in camera:
+                raise Exception('TODO')
             view_matrix = np.linalg.inv(node['world_matrix'])
             break
     if projection_matrix is None:
-        projection_matrix = calc_projection_matrix(aspectRatio=1.5, yfov=np.pi/2.5)
+        #projection_matrix = calc_projection_matrix(aspectRatio=1.5, yfov=np.pi/2.5)
+        projection_matrix = pyrr.matrix44.create_perspective_projection_matrix(np.pi / 2.5 * (180 / np.pi), 1.5, 0.1, 1000).T
     if view_matrix is None:
         view_matrix = np.eye(4)
         view_matrix[2, 3] = -15
