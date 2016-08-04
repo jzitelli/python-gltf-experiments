@@ -12,7 +12,7 @@ import PIL.Image as Image
 
 import numpy as np
 
-    
+
 from glutils import *
 from gltfutils import *
 
@@ -330,8 +330,10 @@ if __name__ == "__main__":
         raise Exception('failed to load %s:\n%s' % (sys.argv[1], err))
 
     uri_path = os.path.dirname(sys.argv[1])
-    show_gltf(gltf, uri_path)
 
     gltf = JSobject(gltf)
+
+    show_gltf(gltf, uri_path)
+
     scene = gltf.scenes[gltf.scene]
     nodes = [gltf.nodes[n] for n in scene.nodes]
