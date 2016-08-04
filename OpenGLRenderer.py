@@ -1,9 +1,14 @@
+import sys
+import json
+
 import numpy as np
 
 import OpenGL.GL as gl
 import cyglfw3 as glfw
 
+
 from glutils import *
+from gltfutils import *
 
 
 class OpenGLRenderer(object):
@@ -29,7 +34,10 @@ class OpenGLRenderer(object):
         on_resize(window, width, height)
         self.window = window
         self.window_size = window_size
-    def render(self, scene, view_matrix=None, projection_matrix=None):
+    def set_scene(self, scene):
+        self.scene = scene
+        scene.update_world_matrices()
+    def render(self, view_matrix=None, projection_matrix=None):
         pass
     def start_render_loop(self):
         while not glfw.WindowShouldClose(self.window):
@@ -44,4 +52,9 @@ class OpenGLRenderer(object):
 
 if __name__ == '__main__':
     renderer = OpenGLRenderer()
+    if len(sys.argv) == 2:
+        gltf = json.loads(open(sys.argv[1]).read())
+        print('* loaded "%s"' % sys.argv[1])
+        scene = Scene(gltf)
+        renderer.set_scene(scene)
     renderer.start_render_loop()

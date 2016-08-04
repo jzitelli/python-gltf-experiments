@@ -12,41 +12,9 @@ import PIL.Image as Image
 
 import numpy as np
 
-try: # python 3.3 or later
-    from types import MappingProxyType
-except ImportError as err:
-    MappingProxyType = dict
-
     
 from glutils import *
-
-
-class JSobject(dict):
-    """Object-based representation (rather than dict) of JSON data.
-    Useful for interactively exploring JSON data via ipython tab-completion."""
-    def __init__(self, json_dict):
-        dict.__init__(self)
-        d = {}
-        for k, v in json_dict.items():
-            if k in self.__dict__:
-                raise Exception('attribute name collision: %s' % k)
-            if isinstance(v, dict):
-                d[k] = JSobject(v)
-            else:
-                d[k] = v
-        self.__dict__.update(d)
-        self.update(d)
-
-
-GLTF_BUFFERVIEW_TYPE_SIZES = MappingProxyType({
-    'SCALAR': 1,
-    'VEC2': 2,
-    'VEC3': 3,
-    'VEC4': 4,
-    'MAT2': 4,
-    'MAT3': 9,
-    'MAT4': 16
-})
+from gltfutils import *
 
 
 def setup_glfw(width=900, height=600):
