@@ -17,6 +17,8 @@ class OpenGLRenderer(object):
         if not glfw.Init():
             raise Exception('failed to initialize glfw')
         width, height = window_size
+        glfw.WindowHint(glfw.DOUBLEBUFFER, False)
+        glfw.SwapInterval(0)
         window = glfw.CreateWindow(width, height, "OpenGLRenderer")
         if not window:
             glfw.Terminate()
