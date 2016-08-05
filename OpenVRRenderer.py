@@ -1,3 +1,7 @@
+import sys
+import json
+import os.path
+
 import numpy as np
 
 import OpenGL.GL as gl
@@ -9,12 +13,15 @@ from openvr.gl_renderer import OpenVrFramebuffer as OpenVRFramebuffer
 from openvr.gl_renderer import matrixForOpenVrMatrix as matrixForOpenVRMatrix
 from openvr.tracked_devices_actor import TrackedDevicesActor
 
+
+import gltfutils as gltfu
 from OpenGLRenderer import OpenGLRenderer
 
 
 class OpenVRRenderer(OpenGLRenderer):
-    def __init__(self, window_size=(800, 600), multisample=0):
-        OpenGLRenderer.__init__(self, window_size=window_size)
+    def __init__(self, window_size=(800, 600), multisample=0, znear=0.1, zfar=1000):
+        OpenGLRenderer.__init__(self, window_size=window_size, double_buffered=False)
+        gl.glClearColor(0.1, 0.1, 0.1, 0.0)
         self.vr_system = openvr.init(openvr.VRApplication_Scene)
         w, h = self.vr_system.getRecommendedRenderTargetSize()
         self.vr_framebuffers = (OpenVRFramebuffer(w, h, multisample=multisample),
@@ -26,40 +33,67 @@ class OpenVRRenderer(OpenGLRenderer):
         self.vr_framebuffers[1].init_gl()
         poses_t = openvr.TrackedDevicePose_t * openvr.k_unMaxTrackedDeviceCount
         self.poses = poses_t()
-        zNear, zFar = 0.1, 1000
         self.projection_matrices = (np.asarray(matrixForOpenVRMatrix(self.vr_system.getProjectionMatrix(openvr.Eye_Left,
-                                                                                                        zNear, zFar, openvr.API_OpenGL))),
+                                                                                                        znear, zfar, openvr.API_OpenGL))),
                                     np.asarray(matrixForOpenVRMatrix(self.vr_system.getProjectionMatrix(openvr.Eye_Right,
-                                                                                                        zNear, zFar, openvr.API_OpenGL))))
+                                                                                                        znear, zfar, openvr.API_OpenGL))))
         self.view_matrices = (matrixForOpenVRMatrix(self.vr_system.getEyeToHeadTransform(openvr.Eye_Left)).I,
                               matrixForOpenVRMatrix(self.vr_system.getEyeToHeadTransform(openvr.Eye_Right)).I)
+        self.modelview_left  = np.eye(4, dtype=np.float32)
+        self.modelview_right = np.eye(4, dtype=np.float32)
         self.controllers = TrackedDevicesActor(self.poses)
         self.controllers.show_controllers_only = False
         self.controllers.init_gl()
-        gl.glClearColor(0.5, 0.5, 0.5, 0.0)
+        self.scene = None
+    def set_scene(self, gltf, uri_path, scene_name=None):
+        if scene_name is None:
+            scene_name = gltf.scene
+        gltfu.setup_shaders(gltf, uri_path)
+        gltfu.setup_programs(gltf)
+        gltfu.setup_textures(gltf, uri_path)
+        gltfu.setup_buffers(gltf, uri_path)
+        sys.stdout.flush()
+        self.gltf = gltf
+        self.scene = gltf.scenes[scene_name]
+        for node in [gltf.nodes[n] for n in self.scene.nodes]:
+            gltfu.update_world_matrices(node, gltf)        
     def render(self):
         self.vr_compositor.waitGetPoses(self.poses, openvr.k_unMaxTrackedDeviceCount, None, 0)
-        hmd_pose0 = self.poses[openvr.k_unTrackedDeviceIndex_Hmd]
-        if not hmd_pose0.bPoseIsValid:
+        hmd_pose = self.poses[openvr.k_unTrackedDeviceIndex_Hmd]
+        if not hmd_pose.bPoseIsValid:
             return
-        hmd_pose1 = hmd_pose0.mDeviceToAbsoluteTracking
-        hmd_pose = matrixForOpenVRMatrix(hmd_pose1).I
-        modelview = hmd_pose
-        mvl = modelview * self.view_matrices[0]
-        mvr = modelview * self.view_matrices[1]
-        mvl = np.asarray(np.matrix(mvl, dtype=np.float32))
-        mvr = np.asarray(np.matrix(mvr, dtype=np.float32))
+        modelview = matrixForOpenVRMatrix(hmd_pose.mDeviceToAbsoluteTracking).I
+        self.modelview_left[...]  = modelview * self.view_matrices[0]
+        self.modelview_right[...] = modelview * self.view_matrices[1]
         gl.glViewport(0, 0, self.vr_framebuffers[0].width, self.vr_framebuffers[0].height)
+
+        if self.scene is None:
+            nodes = []
+        else:
+            nodes = [self.gltf.nodes[n] for n in self.scene.nodes]
+            
+        # draw left eye...
         gl.glBindFramebuffer(gl.GL_FRAMEBUFFER, self.vr_framebuffers[0].fb)
         gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)
-        # draw...
-        self.controllers.display_gl(mvl, self.projection_matrices[0])
-        self.vr_framebuffers[0].submit(openvr.Eye_Left)
+        for node in nodes:
+            gltfu.draw_node(node, self.gltf,
+                            projection_matrix=self.projection_matrices[0].T,
+                            view_matrix=self.modelview_left.T)
+        self.controllers.display_gl(self.modelview_left, self.projection_matrices[0])
+        self.vr_compositor.submit(openvr.Eye_Left, self.vr_framebuffers[0].texture)
+        #self.vr_framebuffers[0].submit(openvr.Eye_Left)
+
+        # draw right eye...
         gl.glBindFramebuffer(gl.GL_FRAMEBUFFER, self.vr_framebuffers[1].fb)
         gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)
-        # draw...
-        self.controllers.display_gl(mvr, self.projection_matrices[1])
-        self.vr_framebuffers[1].submit(openvr.Eye_Right)
+        for node in nodes:
+            gltfu.draw_node(node, self.gltf,
+                            projection_matrix=self.projection_matrices[1].T,
+                            view_matrix=self.modelview_right.T)
+        self.controllers.display_gl(self.modelview_right, self.projection_matrices[1])
+        self.vr_compositor.submit(openvr.Eye_Right, self.vr_framebuffers[1].texture)
+        #self.vr_framebuffers[1].submit(openvr.Eye_Right)
+                            
         gl.glBindFramebuffer(gl.GL_FRAMEBUFFER, 0)
     def start_render_loop(self):
         while not glfw.WindowShouldClose(self.window):
@@ -72,7 +106,11 @@ class OpenVRRenderer(OpenGLRenderer):
         glfw.DestroyWindow(self.window)
         glfw.Terminate()
 
-
+    
 if __name__ == "__main__":
     renderer = OpenVRRenderer()
+    if len(sys.argv) == 2:
+        gltf = gltfu.JSobject(json.loads(open(sys.argv[1]).read()))
+        uri_path = os.path.dirname(sys.argv[1])
+        renderer.set_scene(gltf, uri_path, gltf.scene)
     renderer.start_render_loop()

@@ -13,12 +13,13 @@ from gltfutils import *
 
 
 class OpenGLRenderer(object):
-    def __init__(self, window_size=(800, 600)):
+    def __init__(self, window_size=(800, 600), double_buffered=True):
         if not glfw.Init():
             raise Exception('failed to initialize glfw')
         width, height = window_size
-        glfw.WindowHint(glfw.DOUBLEBUFFER, False)
-        glfw.SwapInterval(0)
+        if not double_buffered:
+            glfw.WindowHint(glfw.DOUBLEBUFFER, False)
+            glfw.SwapInterval(0)
         window = glfw.CreateWindow(width, height, "OpenGLRenderer")
         if not window:
             glfw.Terminate()
