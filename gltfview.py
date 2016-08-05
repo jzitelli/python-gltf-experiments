@@ -1,6 +1,7 @@
 import sys
 import os.path
 import json
+import argparse
 
 import OpenGL.GL as gl
 
@@ -11,8 +12,7 @@ import numpy as np
 import pyrr
 
 
-#import gltfutils as gltfu
-from gltfutils import *
+import gltfutils as gltfu
 
 
 def setup_glfw(width=900, height=600):
@@ -40,8 +40,9 @@ def setup_glfw(width=900, height=600):
 def render_scene(scene, gltf, projection_matrix, view_matrix):
     nodes = [gltf['nodes'][n] for n in scene['nodes']]
     for node in nodes:
-        draw_node(node, gltf,
-                  projection_matrix=projection_matrix, view_matrix=view_matrix)
+        gltfu.draw_node(node, gltf,
+                        projection_matrix=projection_matrix,
+                        view_matrix=view_matrix)
 
 
 def show_gltf(gltf, uri_path, scene_name=None):
@@ -50,14 +51,14 @@ def show_gltf(gltf, uri_path, scene_name=None):
     scene = gltf['scenes'][scene_name]
     window = setup_glfw()
 
-    setup_shaders(gltf, uri_path)
-    setup_programs(gltf)
-    setup_textures(gltf, uri_path)
-    setup_buffers(gltf, uri_path)
+    gltfu.setup_shaders(gltf, uri_path)
+    gltfu.setup_programs(gltf)
+    gltfu.setup_textures(gltf, uri_path)
+    gltfu.setup_buffers(gltf, uri_path)
 
     nodes = [gltf['nodes'][n] for n in scene['nodes']]
     for node in nodes:
-        update_world_matrices(node, gltf)
+        gltfu.update_world_matrices(node, gltf)
     for node in nodes:
         if 'camera' in node:
             camera = gltf['cameras'][node['camera']]
@@ -96,15 +97,26 @@ def show_gltf(gltf, uri_path, scene_name=None):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        print('usage: python %s <path to gltf file>' % sys.argv[0])
-        sys.exit()
-    uri_path = os.path.dirname(sys.argv[1])
+    parser = argparse.ArgumentParser()
+    parser.add_argument('filename', help='path of glTF file to view')
+    parser.add_argument("--openvr", help="view in VR (using OpenVR viewer)",
+                        action="store_true")
+    args = parser.parse_args()
+
+    uri_path = os.path.dirname(args.filename)
     gltf = None
     try:
-        gltf = JSobject(json.loads(open(sys.argv[1]).read()))
-        print('* loaded %s' % sys.argv[1])
+        gltf = json.loads(open(args.filename).read())
+        print('* loaded "%s"' % args.filename)
     except Exception as err:
-        raise Exception('failed to load %s:\n%s' % (sys.argv[1], err))
+        raise Exception('failed to load %s:\n%s' % (args.filename, err))
 
-    show_gltf(gltf, uri_path)
+    gltf = gltfu.JSobject(gltf)
+
+    if args.openvr:
+        from OpenVRRenderer import OpenVRRenderer
+        renderer = OpenVRRenderer()
+        renderer.set_scene(gltf, uri_path, gltf.scene)
+        renderer.start_render_loop()
+    else:
+        show_gltf(gltf, uri_path)

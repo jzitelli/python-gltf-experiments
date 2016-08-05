@@ -105,12 +105,3 @@ class OpenVRRenderer(OpenGLRenderer):
         openvr.shutdown()
         glfw.DestroyWindow(self.window)
         glfw.Terminate()
-
-    
-if __name__ == "__main__":
-    renderer = OpenVRRenderer()
-    if len(sys.argv) == 2:
-        gltf = gltfu.JSobject(json.loads(open(sys.argv[1]).read()))
-        uri_path = os.path.dirname(sys.argv[1])
-        renderer.set_scene(gltf, uri_path, gltf.scene)
-    renderer.start_render_loop()
