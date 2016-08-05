@@ -1,4 +1,5 @@
 import sys
+import os.path
 import json
 
 import numpy as np
@@ -37,18 +38,17 @@ class OpenGLRenderer(object):
     def set_scene(self, scene):
         self.scene = scene
         scene.update_world_matrices()
-    def render(self, view_matrix=None, projection_matrix=None):
+    def render(self):
         pass
     def start_render_loop(self):
         while not glfw.WindowShouldClose(self.window):
             glfw.PollEvents()
-            gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)
-            # render ...
+            self.render()
             glfw.SwapBuffers(self.window)
         print('* closing window...')
         glfw.DestroyWindow(self.window)
         glfw.Terminate()
-        
+
 
 if __name__ == '__main__':
     renderer = OpenGLRenderer()

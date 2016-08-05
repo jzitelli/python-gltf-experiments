@@ -67,6 +67,7 @@ class Node(object):
             self.scale = np.array(gltf_node.scale, dtype=np.float64)
         if 'matrix' in gltf_node:
             self.matrix = np.array(gltf_node.matrix, dtype=np.float64).reshape((4,4))
+            # TODO: decompose matrix to TRS
         else:
             self.update_matrix()
         self.children = [Node(gltf_nodes[node_name], gltf_nodes)
