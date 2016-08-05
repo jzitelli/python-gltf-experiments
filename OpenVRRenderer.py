@@ -2,6 +2,8 @@ import numpy as np
 
 import OpenGL.GL as gl
 
+import cyglfw3 as glfw
+
 import openvr
 from openvr.gl_renderer import OpenVrFramebuffer as OpenVRFramebuffer
 from openvr.gl_renderer import matrixForOpenVrMatrix as matrixForOpenVRMatrix
@@ -34,6 +36,7 @@ class OpenVRRenderer(OpenGLRenderer):
         self.controllers = TrackedDevicesActor(self.poses)
         self.controllers.show_controllers_only = False
         self.controllers.init_gl()
+        gl.glClearColor(0.5, 0.5, 0.5, 0.0)
     def render(self):
         self.vr_compositor.waitGetPoses(self.poses, openvr.k_unMaxTrackedDeviceCount, None, 0)
         hmd_pose0 = self.poses[openvr.k_unTrackedDeviceIndex_Hmd]
@@ -48,18 +51,26 @@ class OpenVRRenderer(OpenGLRenderer):
         mvr = np.asarray(np.matrix(mvr, dtype=np.float32))
         gl.glViewport(0, 0, self.vr_framebuffers[0].width, self.vr_framebuffers[0].height)
         gl.glBindFramebuffer(gl.GL_FRAMEBUFFER, self.vr_framebuffers[0].fb)
-        gl.glClearColor(0.5, 0.5, 0.5, 0.0)
         gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)
         # draw...
         self.controllers.display_gl(mvl, self.projection_matrices[0])
         self.vr_framebuffers[0].submit(openvr.Eye_Left)
         gl.glBindFramebuffer(gl.GL_FRAMEBUFFER, self.vr_framebuffers[1].fb)
-        gl.glClearColor(0.5, 0.5, 0.5, 0.0)
         gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)
         # draw...
         self.controllers.display_gl(mvr, self.projection_matrices[1])
         self.vr_framebuffers[1].submit(openvr.Eye_Right)
         gl.glBindFramebuffer(gl.GL_FRAMEBUFFER, 0)
+    def start_render_loop(self):
+        while not glfw.WindowShouldClose(self.window):
+            glfw.PollEvents()
+            self.render()
+            glfw.SwapBuffers(self.window)
+        print('* closing window...')
+        self.controllers.dispose_gl()
+        openvr.shutdown()
+        glfw.DestroyWindow(self.window)
+        glfw.Terminate()
 
 
 if __name__ == "__main__":
