@@ -24,13 +24,14 @@ class OpenGLRenderer(object):
         scene = gltf.scenes[scene_name]
         self.nodes = [self.gltf.nodes[n] for n in scene.nodes]
         for node in self.nodes:
-            gltfu.update_world_matrices(node, gltf)        
+            gltfu.update_world_matrices(node, gltf)
         for node in self.nodes:
             if 'camera' in node:
                 camera = gltf['cameras'][node['camera']]
                 if 'perspective' in camera:
                     perspective = camera['perspective']
-                    self.projection_matrix = pyrr.matrix44.create_perspective_projection_matrix(perspective['yfov'] * (180 / np.pi), perspective['aspectRatio'], perspective['znear'], perspective['zfar']).T
+                    self.projection_matrix = pyrr.matrix44.create_perspective_projection_matrix(np.rad2deg(perspective['yfov']), perspective['aspectRatio'],
+                                                                                                perspective['znear'], perspective['zfar']).T
                 elif 'orthographic' in camera:
                     raise Exception('TODO')
                 self.view_matrix = np.linalg.inv(node['world_matrix'])

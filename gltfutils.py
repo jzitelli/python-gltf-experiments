@@ -213,7 +213,8 @@ def setup_buffers(gltf, uri_path):
 
 
 def setup_draw_state(primitive, gltf,
-                     modelview_matrix=None, projection_matrix=None, view_matrix=None, normal_matrix=None):
+                     modelview_matrix=None, projection_matrix=None,
+                     view_matrix=None, normal_matrix=None):
     material = gltf['materials'][primitive['material']]
     technique = gltf['techniques'][material['technique']]
     program = gltf['programs'][technique['program']]
@@ -233,9 +234,9 @@ def setup_draw_state(primitive, gltf,
             if parameter['semantic'] == 'MODELVIEW':
                 if 'node' in parameter:
                     world_matrix = gltf['nodes'][parameter['node']]['world_matrix']
-                    gl.glUniformMatrix4fv(location, 1, True, np.ascontiguousarray(view_matrix.dot(world_matrix)))
+                    gl.glUniformMatrix4fv(location, 1, True, np.ascontiguousarray(view_matrix.dot(world_matrix), dtype=np.float32))
                 else:
-                    gl.glUniformMatrix4fv(location, 1, True, np.ascontiguousarray(modelview_matrix))
+                    gl.glUniformMatrix4fv(location, 1, True, np.ascontiguousarray(modelview_matrix, dtype=np.float32))
             elif parameter['semantic'] == 'PROJECTION':
                 if 'node' in parameter:
                     raise Exception('TODO')
@@ -245,7 +246,7 @@ def setup_draw_state(primitive, gltf,
                 if 'node' in parameter:
                     raise Exception('TODO')
                 else:
-                    gl.glUniformMatrix3fv(location, 1, True, np.ascontiguousarray(normal_matrix))
+                    gl.glUniformMatrix3fv(location, 1, True, np.ascontiguousarray(normal_matrix, dtype=np.float32))
             else:
                 raise Exception('unhandled semantic: %s' % parameter['semantic'])
         else:

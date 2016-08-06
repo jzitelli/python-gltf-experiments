@@ -3,6 +3,10 @@ import os.path
 import json
 import argparse
 
+import OpenGL
+OpenGL.ERROR_CHECKING = False
+OpenGL.ERROR_LOGGING = False
+OpenGL.ERROR_ON_COPY = True
 import OpenGL.GL as gl
 
 import cyglfw3 as glfw
@@ -80,5 +84,5 @@ if __name__ == "__main__":
     except Exception as err:
         raise Exception('failed to load %s:\n%s' % (args.filename, err))
     gltf = gltfu.JSobject(gltf)
-        
+
     show_gltf(gltf, uri_path)
