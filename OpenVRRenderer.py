@@ -1,7 +1,3 @@
-import sys
-import json
-import os.path
-
 import numpy as np
 
 import OpenGL.GL as gl
@@ -21,7 +17,6 @@ from OpenGLRenderer import OpenGLRenderer
 class OpenVRRenderer(OpenGLRenderer):
     def __init__(self, window_size=(800, 600), multisample=0, znear=0.1, zfar=1000):
         OpenGLRenderer.__init__(self, window_size=window_size, double_buffered=False)
-        gl.glClearColor(0.1, 0.1, 0.1, 0.0)
         self.vr_system = openvr.init(openvr.VRApplication_Scene)
         w, h = self.vr_system.getRecommendedRenderTargetSize()
         self.vr_framebuffers = (OpenVRFramebuffer(w, h, multisample=multisample),
@@ -45,6 +40,7 @@ class OpenVRRenderer(OpenGLRenderer):
         self.controllers.show_controllers_only = False
         self.controllers.init_gl()
         self.scene = None
+        gl.glViewport(0, 0, self.vr_framebuffers[0].width, self.vr_framebuffers[0].height)
     def set_scene(self, gltf, uri_path, scene_name=None):
         if scene_name is None:
             scene_name = gltf.scene
@@ -52,11 +48,11 @@ class OpenVRRenderer(OpenGLRenderer):
         gltfu.setup_programs(gltf)
         gltfu.setup_textures(gltf, uri_path)
         gltfu.setup_buffers(gltf, uri_path)
-        sys.stdout.flush()
         self.gltf = gltf
         self.scene = gltf.scenes[scene_name]
-        for node in [gltf.nodes[n] for n in self.scene.nodes]:
-            gltfu.update_world_matrices(node, gltf)        
+        self.nodes = [self.gltf.nodes[n] for n in self.scene.nodes]
+        for node in self.nodes:
+            gltfu.update_world_matrices(node, gltf)
     def render(self):
         self.vr_compositor.waitGetPoses(self.poses, openvr.k_unMaxTrackedDeviceCount, None, 0)
         hmd_pose = self.poses[openvr.k_unTrackedDeviceIndex_Hmd]
@@ -65,17 +61,11 @@ class OpenVRRenderer(OpenGLRenderer):
         modelview = matrixForOpenVRMatrix(hmd_pose.mDeviceToAbsoluteTracking).I
         self.modelview_left[...]  = modelview * self.view_matrices[0]
         self.modelview_right[...] = modelview * self.view_matrices[1]
-        gl.glViewport(0, 0, self.vr_framebuffers[0].width, self.vr_framebuffers[0].height)
-
-        if self.scene is None:
-            nodes = []
-        else:
-            nodes = [self.gltf.nodes[n] for n in self.scene.nodes]
             
         # draw left eye...
         gl.glBindFramebuffer(gl.GL_FRAMEBUFFER, self.vr_framebuffers[0].fb)
         gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)
-        for node in nodes:
+        for node in self.nodes:
             gltfu.draw_node(node, self.gltf,
                             projection_matrix=self.projection_matrices[0].T,
                             view_matrix=self.modelview_left.T)
@@ -86,7 +76,7 @@ class OpenVRRenderer(OpenGLRenderer):
         # draw right eye...
         gl.glBindFramebuffer(gl.GL_FRAMEBUFFER, self.vr_framebuffers[1].fb)
         gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)
-        for node in nodes:
+        for node in self.nodes:
             gltfu.draw_node(node, self.gltf,
                             projection_matrix=self.projection_matrices[1].T,
                             view_matrix=self.modelview_right.T)

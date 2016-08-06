@@ -1,63 +1,44 @@
-import sys
-import os.path
-import json
-
 import numpy as np
 
 import OpenGL.GL as gl
 
-import cyglfw3 as glfw
+import pyrr
 
 
-from gltfutils import *
+import gltfutils as gltfu
 
 
 class OpenGLRenderer(object):
-    def __init__(self, window_size=(800, 600), double_buffered=True):
-        if not glfw.Init():
-            raise Exception('failed to initialize glfw')
-        width, height = window_size
-        if not double_buffered:
-            glfw.WindowHint(glfw.DOUBLEBUFFER, False)
-            glfw.SwapInterval(0)
-        window = glfw.CreateWindow(width, height, "OpenGLRenderer")
-        if not window:
-            glfw.Terminate()
-            raise Exception('failed to create glfw window')
-        # set up glfw callbacks:
-        def on_resize(window, width, height):
-            # TODO: update projection matrix
-            gl.glViewport(0, 0, width, height)
-        glfw.SetWindowSizeCallback(window, on_resize)
-        def on_keydown(window, key, scancode, action, mods):
-            if (key == glfw.KEY_ESCAPE and action == glfw.PRESS):
-                glfw.SetWindowShouldClose(window, True)
-        glfw.SetKeyCallback(window, on_keydown)
-        glfw.MakeContextCurrent(window)
-        print('GL_VERSION: %s' % gl.glGetString(gl.GL_VERSION))
-        on_resize(window, width, height)
-        self.window = window
-        self.window_size = window_size
-    def set_scene(self, scene):
-        self.scene = scene
-        scene.update_world_matrices()
+    def __init__(self):
+        self.projection_matrix = pyrr.matrix44.create_perspective_projection_matrix(np.pi / 2.5 * (180 / np.pi), 1.5, 0.1, 1000).T
+        self.view_matrix = np.eye(4)
+        self.view_matrix[2, 3] = -10
+    def set_scene(self, gltf, uri_path, scene_name=None):
+        if scene_name is None:
+            scene_name = gltf.scene
+        gltfu.setup_shaders(gltf, uri_path)
+        gltfu.setup_programs(gltf)
+        gltfu.setup_textures(gltf, uri_path)
+        gltfu.setup_buffers(gltf, uri_path)
+        self.gltf = gltf
+        self.scene = gltf.scenes[scene_name]
+        self.nodes = [self.gltf.nodes[n] for n in self.scene.nodes]
+        for node in self.nodes:
+            gltfu.update_world_matrices(node, gltf)        
+        for node in self.nodes:
+            if 'camera' in node:
+                camera = gltf['cameras'][node['camera']]
+                if 'perspective' in camera:
+                    perspective = camera['perspective']
+                    self.projection_matrix = pyrr.matrix44.create_perspective_projection_matrix(perspective['yfov'] * (180 / np.pi), perspective['aspectRatio'], perspective['znear'], perspective['zfar']).T
+                    #projection_matrix = calc_projection_matrix(**perspective)
+                elif 'orthographic' in camera:
+                    raise Exception('TODO')
+                self.view_matrix = np.linalg.inv(node['world_matrix'])
+                break
     def render(self):
-        pass
-    def start_render_loop(self):
-        while not glfw.WindowShouldClose(self.window):
-            glfw.PollEvents()
-            self.render()
-            glfw.SwapBuffers(self.window)
-        print('* closing window...')
-        glfw.DestroyWindow(self.window)
-        glfw.Terminate()
-
-
-if __name__ == '__main__':
-    renderer = OpenGLRenderer()
-    if len(sys.argv) == 2:
-        gltf = json.loads(open(sys.argv[1]).read())
-        print('* loaded "%s"' % sys.argv[1])
-        scene = Scene(gltf)
-        renderer.set_scene(scene)
-    renderer.start_render_loop()
+        gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)
+        for node in self.nodes:
+            gltfu.draw_node(node, self.gltf,
+                            projection_matrix=self.projection_matrix,
+                            view_matrix=self.view_matrix)

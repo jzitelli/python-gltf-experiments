@@ -66,23 +66,27 @@ class JSobject(dict):
 
 class Node(object):
     def __init__(self, gltf_node, gltf_nodes):
-        if 'translation' in gltf_node:
-            self.translation = np.array(gltf_node.translation, dtype=np.float64)
-        if 'quaternion' in gltf_node:
-            self.quaternion = np.array(gltf_node.quaternion, dtype=np.float64)
-        if 'scale' in gltf_node:
-            self.scale = np.array(gltf_node.scale, dtype=np.float64)
         if 'matrix' in gltf_node:
             self.matrix = np.array(gltf_node.matrix, dtype=np.float64).reshape((4,4))
-            # TODO: decompose matrix to TRS
+            self.translation = self.matrix[:3, 3]
+            self.scale = np.array([np.linalg.norm(self.matrix[:3, j]) for j in (0,1,2)])
+            if np.linalg.det(self.matrix) < 0:
+                self.scale[0] *= -1
+            # TODO:
+            # self.quaternion = pyrr.quaternion.
         else:
+            self.translation = np.array(gltf_node.translation, dtype=np.float64)
+            self.quaternion = np.array(gltf_node.quaternion, dtype=np.float64)
+            self.scale = np.array(gltf_node.scale, dtype=np.float64)
             self.update_matrix()
         self.children = [Node(gltf_nodes[node_name], gltf_nodes)
                          for node_name in gltf_node.children]
         self.matrix_needs_update = False
     def update_matrix(self):
         if self.matrix_needs_update:
-            self.matrix = pyrr.matrix44.create_from_translation(self.translation) @ pyrr.matrix44.create_from_quaternion(self.quaternion) @ pyrr.matrix44.create_from_scale(self.scale)
+            self.matrix = pyrr.matrix44.create_from_quaternion(self.quaternion)
+            self.matrix.diagonal()[:3] *= self.scale
+            self.matrix[:3, 2] = self.translation
             self.matrix_needs_update = False
     def update_world_matrices(self, world_matrix=None):
         self.update_matrix()
@@ -209,7 +213,7 @@ def setup_buffers(gltf, uri_path):
 
 
 def setup_draw_state(primitive, gltf,
-                        modelview_matrix=None, projection_matrix=None, view_matrix=None, normal_matrix=None):
+                     modelview_matrix=None, projection_matrix=None, view_matrix=None, normal_matrix=None):
     material = gltf['materials'][primitive['material']]
     technique = gltf['techniques'][material['technique']]
     program = gltf['programs'][technique['program']]

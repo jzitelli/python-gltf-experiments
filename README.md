@@ -15,5 +15,6 @@ A basic application for displaying a glTF scene, inspired by the [tinygltfloader
 - [PyOpenGL](http://pyopengl.sourceforge.net)
 - [cyglfw3](https://github.com/adamlwgriffiths/cyglfw3)
 - [PIL](https://pypi.python.org/pypi/PIL)
-- [NumPy](http://www.numpy.org/)
+- [NumPy](http://www.numpy.org/) (version 1.10 or later is required)
 - [Pyrr](https://github.com/adamlwgriffiths/Pyrr)
+- [pyopenvr](https://github.com/cmbruns/pyopenvr) (optional, required for VR viewing)
