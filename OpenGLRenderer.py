@@ -10,7 +10,7 @@ import gltfutils as gltfu
 
 class OpenGLRenderer(object):
     def __init__(self):
-        self.projection_matrix = pyrr.matrix44.create_perspective_projection_matrix(np.pi / 2.5 * (180 / np.pi), 1.5, 0.1, 1000).T
+        self.projection_matrix = pyrr.matrix44.create_perspective_projection_matrix(np.rad2deg(np.pi / 2.5), 1.5, 0.1, 1000).T
         self.view_matrix = np.eye(4)
         self.view_matrix[2, 3] = -10
     def set_scene(self, gltf, uri_path, scene_name=None):
@@ -21,8 +21,8 @@ class OpenGLRenderer(object):
         gltfu.setup_textures(gltf, uri_path)
         gltfu.setup_buffers(gltf, uri_path)
         self.gltf = gltf
-        self.scene = gltf.scenes[scene_name]
-        self.nodes = [self.gltf.nodes[n] for n in self.scene.nodes]
+        scene = gltf.scenes[scene_name]
+        self.nodes = [self.gltf.nodes[n] for n in scene.nodes]
         for node in self.nodes:
             gltfu.update_world_matrices(node, gltf)        
         for node in self.nodes:
@@ -31,7 +31,6 @@ class OpenGLRenderer(object):
                 if 'perspective' in camera:
                     perspective = camera['perspective']
                     self.projection_matrix = pyrr.matrix44.create_perspective_projection_matrix(perspective['yfov'] * (180 / np.pi), perspective['aspectRatio'], perspective['znear'], perspective['zfar']).T
-                    #projection_matrix = calc_projection_matrix(**perspective)
                 elif 'orthographic' in camera:
                     raise Exception('TODO')
                 self.view_matrix = np.linalg.inv(node['world_matrix'])

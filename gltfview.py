@@ -55,6 +55,7 @@ def show_gltf(gltf, uri_path, scene_name=None):
         renderer.render()
         glfw.SwapBuffers(window)
 
+    del renderer
     glfw.DestroyWindow(window)
     glfw.Terminate()
 

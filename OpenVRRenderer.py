@@ -2,8 +2,6 @@ import numpy as np
 
 import OpenGL.GL as gl
 
-import cyglfw3 as glfw
-
 import openvr
 from openvr.gl_renderer import OpenVrFramebuffer as OpenVRFramebuffer
 from openvr.gl_renderer import matrixForOpenVrMatrix as matrixForOpenVRMatrix
@@ -15,8 +13,8 @@ from OpenGLRenderer import OpenGLRenderer
 
 
 class OpenVRRenderer(OpenGLRenderer):
-    def __init__(self, window_size=(800, 600), multisample=0, znear=0.1, zfar=1000):
-        OpenGLRenderer.__init__(self, window_size=window_size, double_buffered=False)
+    def __init__(self, multisample=0, znear=0.1, zfar=1000):
+        OpenGLRenderer.__init__(self)
         self.vr_system = openvr.init(openvr.VRApplication_Scene)
         w, h = self.vr_system.getRecommendedRenderTargetSize()
         self.vr_framebuffers = (OpenVRFramebuffer(w, h, multisample=multisample),
@@ -39,7 +37,6 @@ class OpenVRRenderer(OpenGLRenderer):
         self.controllers = TrackedDevicesActor(self.poses)
         self.controllers.show_controllers_only = False
         self.controllers.init_gl()
-        self.scene = None
         gl.glViewport(0, 0, self.vr_framebuffers[0].width, self.vr_framebuffers[0].height)
     def set_scene(self, gltf, uri_path, scene_name=None):
         if scene_name is None:
@@ -49,8 +46,8 @@ class OpenVRRenderer(OpenGLRenderer):
         gltfu.setup_textures(gltf, uri_path)
         gltfu.setup_buffers(gltf, uri_path)
         self.gltf = gltf
-        self.scene = gltf.scenes[scene_name]
-        self.nodes = [self.gltf.nodes[n] for n in self.scene.nodes]
+        scene = gltf.scenes[scene_name]
+        self.nodes = [self.gltf.nodes[n] for n in scene.nodes]
         for node in self.nodes:
             gltfu.update_world_matrices(node, gltf)
     def render(self):
@@ -61,7 +58,6 @@ class OpenVRRenderer(OpenGLRenderer):
         modelview = matrixForOpenVRMatrix(hmd_pose.mDeviceToAbsoluteTracking).I
         self.modelview_left[...]  = modelview * self.view_matrices[0]
         self.modelview_right[...] = modelview * self.view_matrices[1]
-            
         # draw left eye...
         gl.glBindFramebuffer(gl.GL_FRAMEBUFFER, self.vr_framebuffers[0].fb)
         gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)
@@ -71,8 +67,6 @@ class OpenVRRenderer(OpenGLRenderer):
                             view_matrix=self.modelview_left.T)
         self.controllers.display_gl(self.modelview_left, self.projection_matrices[0])
         self.vr_compositor.submit(openvr.Eye_Left, self.vr_framebuffers[0].texture)
-        #self.vr_framebuffers[0].submit(openvr.Eye_Left)
-
         # draw right eye...
         gl.glBindFramebuffer(gl.GL_FRAMEBUFFER, self.vr_framebuffers[1].fb)
         gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)
@@ -82,16 +76,7 @@ class OpenVRRenderer(OpenGLRenderer):
                             view_matrix=self.modelview_right.T)
         self.controllers.display_gl(self.modelview_right, self.projection_matrices[1])
         self.vr_compositor.submit(openvr.Eye_Right, self.vr_framebuffers[1].texture)
-        #self.vr_framebuffers[1].submit(openvr.Eye_Right)
-                            
         gl.glBindFramebuffer(gl.GL_FRAMEBUFFER, 0)
-    def start_render_loop(self):
-        while not glfw.WindowShouldClose(self.window):
-            glfw.PollEvents()
-            self.render()
-            glfw.SwapBuffers(self.window)
-        print('* closing window...')
+    def __del__(self):
         self.controllers.dispose_gl()
         openvr.shutdown()
-        glfw.DestroyWindow(self.window)
-        glfw.Terminate()
