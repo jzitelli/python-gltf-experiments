@@ -209,7 +209,7 @@ def setup_buffers(gltf, uri_path):
         bufferView['id'] = buffer_id
         gl.glBindBuffer(bufferView['target'], 0)
         print('* created buffer "%s"' % bufferView_name)
-        
+
 
 def setup_technique_state(technique_name, gltf):
     technique = gltf['techniques'][technique_name]
@@ -235,10 +235,9 @@ def setup_technique_state(technique_name, gltf):
                 setup_technique_state.enabled_locations.append(location)
             else:
                 raise Exception('expected a semantic property for attribute "%s"' % attribute_name)
-        setup_material_uniforms.material_name = None
         setup_technique_state.uniform_locations = {uniform_name: gl.glGetUniformLocation(program['id'], uniform_name)
                                                    for uniform_name in technique['uniforms']}
-        setup_technique_state.technique_name = technique_name
+    setup_technique_state.technique_name = technique_name
 setup_technique_state.program_id = None
 setup_technique_state.technique_name = None
 setup_technique_state.enabled_states = []
@@ -246,10 +245,13 @@ setup_technique_state.enabled_locations = []
 setup_technique_state.uniform_locations = {}
 
 
-def setup_technique_uniforms(technique, gltf,
-                             modelview_matrix=None, projection_matrix=None,
-                             view_matrix=None, normal_matrix=None):
-    program = gltf['programs'][technique['program']]
+def setup_material_uniforms(material, gltf,
+                            modelview_matrix=None, projection_matrix=None,
+                            view_matrix=None, normal_matrix=None):
+    textures = gltf.get('textures', {})
+    samplers = gltf.get('samplers', {})
+    technique = gltf['techniques'][material['technique']]
+    material_values = material.get('values', {})
     for uniform_name, parameter_name in technique['uniforms'].items():
         parameter = technique['parameters'][parameter_name]
         location = setup_technique_state.uniform_locations[uniform_name]
@@ -263,27 +265,24 @@ def setup_technique_uniforms(technique, gltf,
                 elif parameter['semantic'] == 'MODELVIEWINVERSETRANSPOSE':
                     raise Exception('TODO')
                 else:
-                    raise Exception('unhandled technique parameter semantic: %s' % parameter['semantic'])                
+                    raise Exception('unhandled technique parameter semantic: %s' % parameter['semantic'])
             else:
                 if parameter['semantic'] == 'MODELVIEW':
                     gl.glUniformMatrix4fv(location, 1, True, np.ascontiguousarray(modelview_matrix, dtype=np.float32))
                 elif parameter['semantic'] == 'PROJECTION':
-                    gl.glUniformMatrix4fv(location, 1, True, np.ascontiguousarray(projection_matrix))
+                    gl.glUniformMatrix4fv(location, 1, True, np.ascontiguousarray(projection_matrix, dtype=np.float32))
                 elif parameter['semantic'] == 'MODELVIEWINVERSETRANSPOSE':
                     gl.glUniformMatrix3fv(location, 1, True, np.ascontiguousarray(normal_matrix, dtype=np.float32))
                 else:
                     raise Exception('unhandled technique parameter semantic: %s' % parameter['semantic'])
-
-                
-def setup_material_uniforms(material, gltf):
-    if setup_material_uniforms.material_name != material['name']:
-        technique = gltf['techniques'][material['technique']]
-        program = gltf['programs'][technique['program']]
-        textures = gltf.get('textures', {})
-        samplers = gltf.get('samplers', {})
-        for parameter_name, value in material.get('values', {}).items():
-            parameter = technique['parameters'][parameter_name]
-            location = setup_technique_state.uniform_locations[parameter_name]
+        else:
+            if parameter_name in material_values:
+                if setup_material_uniforms.material_name == material['name']:
+                    continue
+                else:
+                    value = material_values[parameter_name]
+            else:
+                value = parameter['value']
             if parameter['type'] == gl.GL_SAMPLER_2D:
                 texture = textures[value]
                 gl.glActiveTexture(gl.GL_TEXTURE0+0)
@@ -300,7 +299,7 @@ def setup_material_uniforms(material, gltf):
                 gl.glUniform4f(location, *value)
             else:
                 raise Exception('unhandled parameter type: %s' % parameter['type'])
-        setup_material_uniforms.material_name = material['name']
+    setup_material_uniforms.material_name = material['name']
 setup_material_uniforms.material_name = None
 
 
@@ -311,12 +310,11 @@ def draw_primitive(primitive, gltf,
     bufferViews = gltf['bufferViews']
     material = gltf['materials'][primitive['material']]
     technique = gltf['techniques'][material['technique']]
-    setup_technique_state(material['technique'], gltf)
-    setup_technique_uniforms(technique, gltf,                   
-                             modelview_matrix=modelview_matrix, projection_matrix=projection_matrix,
-                             view_matrix=view_matrix, normal_matrix=normal_matrix)
-    setup_material_uniforms(material, gltf)
     program = gltf['programs'][technique['program']]
+    setup_technique_state(material['technique'], gltf)
+    setup_material_uniforms(material, gltf,
+                            modelview_matrix=modelview_matrix, projection_matrix=projection_matrix,
+                            view_matrix=view_matrix, normal_matrix=normal_matrix)
     for attribute_name, parameter_name in technique['attributes'].items():
         parameter = technique['parameters'][parameter_name]
         semantic = parameter.get('semantic')
@@ -335,8 +333,8 @@ def draw_primitive(primitive, gltf,
     gl.glBindBuffer(index_bufferView['target'], index_bufferView['id'])
     gl.glDrawElements(primitive['mode'], index_accessor['count'], index_accessor['componentType'],
                       c_void_p(index_accessor['byteOffset']))
-    # if gl.glGetError() != gl.GL_NO_ERROR:
-    #     raise Exception('error drawing elements')
+    if gl.glGetError() != gl.GL_NO_ERROR:
+        raise Exception('error drawing elements')
 
 
 def draw_mesh(mesh, gltf,
