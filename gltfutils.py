@@ -241,7 +241,7 @@ def setup_draw_state(primitive, gltf,
                 if 'node' in parameter:
                     raise Exception('TODO')
                 else:
-                    gl.glUniformMatrix4fv(location, 1, True, np.ascontiguousarray(projection_matrix))
+                    gl.glUniformMatrix4fv(location, 1, True, np.ascontiguousarray(projection_matrix, dtype=np.float32))
             elif parameter['semantic'] == 'MODELVIEWINVERSETRANSPOSE':
                 if 'node' in parameter:
                     raise Exception('TODO')
