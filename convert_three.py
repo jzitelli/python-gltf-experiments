@@ -1,6 +1,9 @@
 import argparse
 import json
 import os
+import base64
+
+import numpy as np
 
 import pyrr
 
@@ -16,21 +19,53 @@ for filename in os.listdir(GLTF_SCHEMA_ROOT):
 def convert_three(three_json):
     three_object = three_json['object']
     if three_object['type'] != 'Scene':
-        raise Exception('unexpected object type: "%s"' % three_object['type'])
-    three_geometries = three_json['geometries']
-    three_materials = three_json['materials']
-    three_textures = three_json.get('textures', [])
-    three_images = three_json.get('images', [])
+        raise Exception('expected a "Scene" object type instead of "%s"' % three_object['type'])
+
     def make_default(gltf_type):
         return {prop_name: prop_spec['default']
                 for prop_name, prop_spec in GLTF_SCHEMAS[gltf_type]['properties'].items()
                 if 'default' in prop_spec}
-    # gltf = {prop_name: prop_spec['default']
-    #         for prop_name, prop_spec in GLTF_SCHEMAS['glTF']['properties'].items()
-    #         if 'default' in prop_spec}
+
     gltf = make_default('glTF')
     gltf['scene'] = three_object.get('name',
                                      three_object['uuid'])
+
+    def convert_geometry(geom):
+        if geom['type'] == 'BufferGeometry':
+            data = geom['data']
+            for attr_name, attr in data['attributes'].items():
+                buffer_bytes = np.array(attr['array']).tobytes()
+                attr_buffer = {'type': 'text',
+                               'uri': 'data:application/octet-stream;base64,%s' % base64.urlsafe_b64encode(buffer_bytes)} # TODO: fix
+                attr_buffer_id = '%s: %s' % (geom['uuid'], attr_name)
+                gltf['buffers'][attr_buffer_id] = attr_buffer
+                attr_bufferView = {'buffer': attr_buffer_id,
+                                   'byteOffset': 0,
+                                   'byteLength': len(buffer_bytes),
+                                   'target': 34962} # ARRAY_BUFFER
+                gltf['bufferViews'][attr_buffer_id] = attr_bufferView
+                attr_accessor = {}
+
+    for geom in three_json['geometries']:
+        convert_geometry(geom)
+
+    def convert_image(image):
+        pass
+
+    for image in three_json.get('images', []):
+        convert_image(image)
+
+    def convert_texture(tex):
+        pass
+    
+    for tex in three_json.get('textures', []):
+        convert_texture(tex)
+        
+    def convert_material(mat):
+        pass
+
+    for mat in three_json['materials']:
+        convert_material(mat)
     
     def convert_object(obj):
         node = {'name': obj.get('name',
@@ -49,15 +84,17 @@ def convert_three(three_json):
         if obj['type'] == 'Mesh':
             pass
         elif obj['type'] == 'PerspectiveCamera':
-            camera = {'perspective': {'yfov': obj['fov'],
+            camera = {'type': 'perspective',
+                      'perspective': {'yfov': obj['fov'],
                                       'aspectRatio': obj['aspect'],
                                       'znear': obj['near'],
                                       'zfar': obj['far']}}
-            gltf['cameras'][obj['name']] = camera
+            node['camera'] = obj['name']
+            gltf['cameras'][node['camera']] = camera
         elif obj['type'] == 'OrthographicCamera':
-            pass
+            raise Exception('TODO')
         elif obj['type'] == 'DirectionalLight':
-            pass
+            raise Exception('TODO')
         elif obj['type'] == 'Scene':
             pass
         elif obj['type'] != 'Object3D':
