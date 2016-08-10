@@ -35,7 +35,9 @@ for filename in os.listdir(os.path.join(THREE_SHADERS_ROOT, 'ShaderLib')):
         with open(os.path.join(THREE_SHADERS_ROOT, 'ShaderLib', filename)) as f:
             THREE_SHADERLIB[filename[:-len('.glsl')]] = f.read()
 
-VERTEX_PREFIX = '\n'.join(['precision highp float;',
+VERTEX_PREFIX = '\n'.join(['#version 420',
+                           'precision highp float;',
+                           'precision highp int;',
                            'uniform mat4 modelMatrix;',
                            'uniform mat4 modelViewMatrix;',
                            'uniform mat4 projectionMatrix;',
@@ -48,7 +50,9 @@ VERTEX_PREFIX = '\n'.join(['precision highp float;',
                            '#define FLAT_SHADED 1',
                            '#define NUM_CLIPPING_PLANES 0'])
 
-FRAGMENT_PREFIX = '\n'.join(['precision highp float;',
+FRAGMENT_PREFIX = '\n'.join(['#version 420',
+                             'precision highp float;',
+                             'precision highp int;',
                              'uniform mat4 viewMatrix;',
 			     'uniform vec3 cameraPosition;',
                              '#define FLAT_SHADED 1',
