@@ -2,6 +2,7 @@ import argparse
 import json
 import os
 import base64
+import re
 
 import numpy as np
 
@@ -25,13 +26,45 @@ for filename in os.listdir(os.path.join(THREE_SHADERS_ROOT, 'ShaderChunk')):
     if filename.endswith('.glsl'):
         with open(os.path.join(THREE_SHADERS_ROOT, 'ShaderChunk', filename)) as f:
             THREE_SHADERCHUNK[filename[:-len('.glsl')]] = f.read()
+
 THREE_SHADERLIB = {}
 for filename in os.listdir(os.path.join(THREE_SHADERS_ROOT, 'ShaderLib')):
     if filename.endswith('.glsl'):
         with open(os.path.join(THREE_SHADERS_ROOT, 'ShaderLib', filename)) as f:
             THREE_SHADERLIB[filename[:-len('.glsl')]] = f.read()
 
-            
+for name, src in list(THREE_SHADERLIB.items()):
+    m = re.search(r"#include +<(?P<shaderchunk>\w+)>", src)
+    while m is not None:
+        src = src.replace(m.group(0), THREE_SHADERCHUNK[m.group('shaderchunk')], 1)
+        m = re.search(r"#include +<(?P<shaderchunk>\w+)>", src)
+    THREE_SHADERLIB[name] = src
+
+THREE_VERTEX_SHADERS = {name: {'uri': 'data:text/plain;base64,%s' % base64.urlsafe_b64encode(src.encode()), 'type': 35633}
+                        for name, src in THREE_SHADERLIB.items() if name.endswith('_vert')}
+
+THREE_FRAGMENT_SHADERS = {name: {'uri': 'data:text/plain;base64,%s' % base64.urlsafe_b64encode(src.encode()), 'type': 35632}
+                          for name, src in THREE_SHADERLIB.items() if name.endswith('_frag')}
+
+PROGRAMS = {
+    'basic': {
+        'attributes': [],
+        'fragmentShader': THREE_FRAGMENT_SHADERS['meshbasic_frag'],
+        'vertexShader': THREE_VERTEX_SHADERS['meshbasic_vert']
+    }
+}
+
+TECHNIQUES = {
+    'MeshBasicMaterial': {
+        'parameters': {},
+        'attributes': {},
+        'program': PROGRAMS['basic'],
+        'uniforms': {},
+        'states': {'enable': []}
+    }
+}
+
+
 TYPED_ARRAY_MAP = {
     'Int8Array':    5120,
     'Uint8Array':   5121,
@@ -46,36 +79,6 @@ ITEMSIZE_MAP = {
     2: 'VEC2',
     3: 'VEC3',
     4: 'VEC4'
-}
-
-
-VERTEX_SHADERS = {
-    'meshbasic_vert': {}
-}
-
-
-FRAGMENT_SHADERS = {
-    'meshbasic_frag': {}
-}
-
-
-PROGRAMS = {
-    'basic': {
-        'attributes': [],
-        'fragmentShader': FRAGMENT_SHADERS['meshbasic_frag'],
-        'vertexShader': VERTEX_SHADERS['meshbasic_vert']
-    }
-}
-
-
-TECHNIQUES = {
-    'MeshBasicMaterial': {
-        'parameters': {},
-        'attributes': {},
-        'program': PROGRAMS['basic'],
-        'uniforms': {},
-        'states': {'enable': []}
-    }
 }
 
 
