@@ -68,8 +68,8 @@ SHADERS = {name: {'uri': 'data:text/plain;base64,%s' % str(base64.urlsafe_b64enc
 PROGRAMS = {
     'basic': {
         'attributes': ['position', 'normal', 'uv'],
-        'fragmentShader': SHADERS['meshbasic_frag'],
-        'vertexShader': SHADERS['meshbasic_vert']
+        'fragmentShader': 'meshbasic_frag',
+        'vertexShader': 'meshbasic_vert'
     }
 }
 
@@ -136,7 +136,7 @@ def convert_three(three_json):
         if geom['type'] == 'BufferGeometry':
             data = geom['data']
             for attr_name, attr in data['attributes'].items():
-                buffer_bytes = np.array(attr['array']).tobytes()
+                buffer_bytes = np.array(attr['array']).tobytes() # TODO: dtype
                 attr_buffer = {'type': 'text',
                                'uri': 'data:application/octet-stream;base64,%s' % str(base64.urlsafe_b64encode(buffer_bytes), encoding='utf-8')}
                 attr_buffer_id = '%s: %s' % (geom['uuid'], attr_name)
@@ -144,17 +144,37 @@ def convert_three(three_json):
                 attr_bufferView = {'buffer': attr_buffer_id,
                                    'byteOffset': 0,
                                    'byteLength': len(buffer_bytes),
-                                   'target': 34962} # ARRAY_BUFFER
+                                   'target': gl.GL_ARRAY_BUFFER}
                 attr_bufferView_id = attr_buffer_id
                 gltf['bufferViews'][attr_bufferView_id] = attr_bufferView
                 attr_accessor = {'bufferView': attr_bufferView_id,
                                  'byteOffset': 0,
                                  'byteStride': 0,
                                  'componentType': TYPED_ARRAY_MAP[attr['type']],
-                                 'count': 1, # TODO
+                                 'count': len(attr['array']) // attr['itemSize'],
                                  'type': ITEMSIZE_MAP[attr['itemSize']]} # TODO: min/max properties?
                 attr_accessor_id = attr_bufferView_id
                 gltf['accessors'][attr_accessor_id] = attr_accessor
+            index = data['index']
+            index_buffer_bytes = np.array(index['array']).tobytes() # TODO: dtype
+            index_buffer = {'type': 'text',
+                            'uri': 'data:application/octet-stream;base64,%s' % str(base64.urlsafe_b64encode(index_buffer_bytes), encoding='utf-8')}
+            index_buffer_id = geom['uuid']
+            gltf['buffers'][index_buffer_id] = index_buffer
+            index_bufferView = {'buffer': index_buffer_id,
+                                'byteOffset': 0,
+                                'byteLength': len(index_buffer_bytes),
+                                'target': gl.GL_ELEMENT_ARRAY_BUFFER}
+            index_bufferView_id = index_buffer_id
+            gltf['bufferViews'][index_bufferView_id] = index_bufferView
+            index_accessor = {'bufferView': index_bufferView_id,
+                              'byteOffset': 0,
+                              'byteStride': 0,
+                              'componentType': TYPED_ARRAY_MAP[index['type']],
+                              'count': len(index['array']),
+                              'type': ITEMSIZE_MAP[index['itemSize']]}
+            index_accessor_id = index_bufferView_id
+            gltf['accessors'][index_accessor_id] = index_accessor
         else:
             pass # TODO
 
@@ -162,13 +182,13 @@ def convert_three(three_json):
         convert_geometry(geom)
 
     def convert_image(image):
-        pass
+        pass # TODO
 
     for image in three_json.get('images', []):
         convert_image(image)
 
     def convert_texture(tex):
-        pass
+        pass # TODO
     
     for tex in three_json.get('textures', []):
         convert_texture(tex)
@@ -177,7 +197,20 @@ def convert_three(three_json):
         if mat['type'] == 'MeshBasicMaterial':
             material = {'technique': 'MeshBasicMaterial',
                         'values': {}}
-            gltf['techniques']['MeshBasicMaterial'] = TECHNIQUES['MeshBasicMaterial']
+            values = material['values']
+            if 'name' in mat:
+                material['name'] = mat['name']
+            if 'color' in mat:
+                pass # TODO
+            material_id = mat['uuid']
+            gltf['materials'][material_id] = material
+            technique = TECHNIQUES['MeshBasicMaterial']
+            gltf['techniques']['MeshBasicMaterial'] = technique
+            program_id = technique['program']
+            program = PROGRAMS[program_id]
+            gltf['programs'][program_id] = program
+            gltf['shaders'][program['vertexShader']] = SHADERS[program['vertexShader']]
+            gltf['shaders'][program['fragmentShader']] = SHADERS[program['fragmentShader']]
 
     for mat in three_json['materials']:
         convert_material(mat)
@@ -254,3 +287,7 @@ if __name__ == "__main__":
         json_str = f.read()
     three_json = json.loads(json_str)
     gltf = convert_three(three_json)
+    output = '%s.gltf' % args.input[:-len('.json')]
+    with open(output, 'w') as f:
+        f.write(json.dumps(gltf, indent=2, sort_keys=True))
+        print('wrote "%s"' % output)

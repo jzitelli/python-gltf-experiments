@@ -1668,7 +1668,6 @@
       "uuid": "12d70d78-3a49-4ea9-bc78-18d7a318ac7f"
     },
     {
-      "shading": 1,
       "color": 165956,
       "type": "MeshBasicMaterial",
       "name": "cushionMaterial",
