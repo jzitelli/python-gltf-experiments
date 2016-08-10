@@ -1669,9 +1669,8 @@
     },
     {
       "shading": 1,
-      "shininess": 5,
       "color": 165956,
-      "type": "MeshPhongMaterial",
+      "type": "MeshBasicMaterial",
       "name": "cushionMaterial",
       "uuid": "ea974624-b8ae-4876-9298-b6289c393666"
     },

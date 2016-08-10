@@ -16,6 +16,69 @@ for filename in os.listdir(GLTF_SCHEMA_ROOT):
             GLTF_SCHEMAS[filename[:-len('.schema.json')]] = json.loads(f.read())
 
 
+THREE_SHADERS_ROOT = os.path.join(os.path.split(__file__)[0],
+                                  os.path.pardir,
+                                  'three.js', 'src', 'renderers', 'shaders')
+
+THREE_SHADERCHUNK = {}
+for filename in os.listdir(os.path.join(THREE_SHADERS_ROOT, 'ShaderChunk')):
+    if filename.endswith('.glsl'):
+        with open(os.path.join(THREE_SHADERS_ROOT, 'ShaderChunk', filename)) as f:
+            THREE_SHADERCHUNK[filename[:-len('.glsl')]] = f.read()
+THREE_SHADERLIB = {}
+for filename in os.listdir(os.path.join(THREE_SHADERS_ROOT, 'ShaderLib')):
+    if filename.endswith('.glsl'):
+        with open(os.path.join(THREE_SHADERS_ROOT, 'ShaderLib', filename)) as f:
+            THREE_SHADERLIB[filename[:-len('.glsl')]] = f.read()
+
+            
+TYPED_ARRAY_MAP = {
+    'Int8Array':    5120,
+    'Uint8Array':   5121,
+    'Int16Array':   5122,
+    'Uint16Array':  5123,
+    'Float32Array': 5126
+}
+
+
+ITEMSIZE_MAP = {
+    1: 'SCALAR',
+    2: 'VEC2',
+    3: 'VEC3',
+    4: 'VEC4'
+}
+
+
+VERTEX_SHADERS = {
+    'meshbasic_vert': {}
+}
+
+
+FRAGMENT_SHADERS = {
+    'meshbasic_frag': {}
+}
+
+
+PROGRAMS = {
+    'basic': {
+        'attributes': [],
+        'fragmentShader': FRAGMENT_SHADERS['meshbasic_frag'],
+        'vertexShader': VERTEX_SHADERS['meshbasic_vert']
+    }
+}
+
+
+TECHNIQUES = {
+    'MeshBasicMaterial': {
+        'parameters': {},
+        'attributes': {},
+        'program': PROGRAMS['basic'],
+        'uniforms': {},
+        'states': {'enable': []}
+    }
+}
+
+
 def convert_three(three_json):
     three_object = three_json['object']
     if three_object['type'] != 'Scene':
@@ -27,8 +90,6 @@ def convert_three(three_json):
                 if 'default' in prop_spec}
 
     gltf = make_default('glTF')
-    gltf['scene'] = three_object.get('name',
-                                     three_object['uuid'])
 
     def convert_geometry(geom):
         if geom['type'] == 'BufferGeometry':
@@ -43,8 +104,18 @@ def convert_three(three_json):
                                    'byteOffset': 0,
                                    'byteLength': len(buffer_bytes),
                                    'target': 34962} # ARRAY_BUFFER
-                gltf['bufferViews'][attr_buffer_id] = attr_bufferView
-                attr_accessor = {}
+                attr_bufferView_id = attr_buffer_id
+                gltf['bufferViews'][attr_bufferView_id] = attr_bufferView
+                attr_accessor = {'bufferView': attr_bufferView_id,
+                                 'byteOffset': 0,
+                                 'byteStride': 0,
+                                 'componentType': TYPED_ARRAY_MAP[attr['type']],
+                                 'count': 1, # TODO
+                                 'type': ITEMSIZE_MAP[attr['itemSize']]} # TODO: min/max properties?
+                attr_accessor_id = attr_bufferView_id
+                gltf['accessors'][attr_accessor_id] = attr_accessor
+        else:
+            pass # TODO
 
     for geom in three_json['geometries']:
         convert_geometry(geom)
@@ -62,35 +133,57 @@ def convert_three(three_json):
         convert_texture(tex)
         
     def convert_material(mat):
-        pass
+        if mat['type'] == 'MeshBasicMaterial':
+            material = {'technique': 'MeshBasicMaterial',
+                        'values': {}}
+            gltf['techniques']['MeshBasicMaterial'] = TECHNIQUES['MeshBasicMaterial']
 
     for mat in three_json['materials']:
         convert_material(mat)
+
+    three_geometries = {geom['uuid']: geom for geom in three_json['geometries']}
     
     def convert_object(obj):
-        node = {'name': obj.get('name',
-                                obj['uuid']),
-                'children': []}
-        gltf['nodes'][node['name']] = node
+        node = {'children': []}
+        if 'name' in obj:
+            node['name'] = obj['name']
+        node_id = obj['uuid']
+        gltf['nodes'][node_id] = node
         if 'matrix' in obj:
             node['matrix'] = list(obj['matrix'])
         else:
             node['translation'] = list(obj['position'])
-            node['quaternion'] = list(obj.get('quaternion',
-                                              pyrr.quaternion.create_from_eulers(obj['rotation'])))
+            node['rotation'] = list(obj.get('quaternion',
+                                            pyrr.quaternion.create_from_eulers(obj['rotation'])))
             node['scale'] = list(obj['scale'])
-        for child in obj['children']:
-            node['children'].append(convert_object(child))
+
         if obj['type'] == 'Mesh':
-            pass
+            mesh_id = obj['geometry']
+            mat_id = obj['material']
+            geom = three_geometries[mesh_id]
+            if geom['type'] == 'BufferGeometry':
+                data = geom['data']
+                primitive = {
+                    'attributes': {attr_name: '%s: %s' % (geom['uuid'], attr_name)
+                                   for attr_name in data['attributes'].keys()},
+                    'indices': geom['uuid'],
+                    'material': mat_id
+                }
+                primitive['mode'] = 4 # TRIANGLES
+                mesh = {'primitives': [primitive]}
+                node['meshes'] = [mesh_id]
+                gltf['meshes'][mesh_id] = mesh
+            else:
+                pass # TODO
         elif obj['type'] == 'PerspectiveCamera':
             camera = {'type': 'perspective',
                       'perspective': {'yfov': obj['fov'],
                                       'aspectRatio': obj['aspect'],
                                       'znear': obj['near'],
                                       'zfar': obj['far']}}
-            node['camera'] = obj['name']
-            gltf['cameras'][node['camera']] = camera
+            camera_id = obj['uuid']
+            node['camera'] = camera_id
+            gltf['cameras'][camera_id] = camera
         elif obj['type'] == 'OrthographicCamera':
             raise Exception('TODO')
         elif obj['type'] == 'DirectionalLight':
@@ -99,9 +192,15 @@ def convert_three(three_json):
             pass
         elif obj['type'] != 'Object3D':
             raise Exception('unexpected object type: "%s"' % obj['type'])
-        return node['name']
 
-    gltf['scenes'][gltf['scene']] = {'nodes': [convert_object(three_object)]}
+        for child in obj['children']:
+            node['children'].append(convert_object(child))
+        return node_id
+
+    scene = {'nodes': [convert_object(three_object)]}
+    gltf['scene'] = three_object.get('name',
+                                     three_object['uuid'])
+    gltf['scenes'][gltf['scene']] = scene
     return gltf
 
 
