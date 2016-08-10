@@ -4,6 +4,8 @@ import os
 import base64
 import re
 
+import OpenGL.GL as gl
+
 import numpy as np
 
 import pyrr
@@ -33,34 +35,70 @@ for filename in os.listdir(os.path.join(THREE_SHADERS_ROOT, 'ShaderLib')):
         with open(os.path.join(THREE_SHADERS_ROOT, 'ShaderLib', filename)) as f:
             THREE_SHADERLIB[filename[:-len('.glsl')]] = f.read()
 
+VERTEX_PREFIX = '\n'.join(['uniform mat4 modelMatrix;',
+                           'uniform mat4 modelViewMatrix;',
+                           'uniform mat4 projectionMatrix;',
+                           'uniform mat4 viewMatrix;',
+                           'uniform mat3 normalMatrix;',
+                           'uniform vec3 cameraPosition;',
+                           'attribute vec3 position;',
+                           'attribute vec3 normal;',
+                           'attribute vec2 uv;'])
+
+FRAGMENT_PREFIX = '\n'.join(['uniform mat4 viewMatrix;',
+			     'uniform vec3 cameraPosition;'])
+
 for name, src in list(THREE_SHADERLIB.items()):
     m = re.search(r"#include +<(?P<shaderchunk>\w+)>", src)
     while m is not None:
         src = src.replace(m.group(0), THREE_SHADERCHUNK[m.group('shaderchunk')], 1)
         m = re.search(r"#include +<(?P<shaderchunk>\w+)>", src)
+    if name.endswith('_vert'):
+        src = '\n'.join([VERTEX_PREFIX, src])
+    else:
+        src = '\n'.join([FRAGMENT_PREFIX, src])
     THREE_SHADERLIB[name] = src
 
-THREE_VERTEX_SHADERS = {name: {'uri': 'data:text/plain;base64,%s' % base64.urlsafe_b64encode(src.encode()), 'type': 35633}
-                        for name, src in THREE_SHADERLIB.items() if name.endswith('_vert')}
 
-THREE_FRAGMENT_SHADERS = {name: {'uri': 'data:text/plain;base64,%s' % base64.urlsafe_b64encode(src.encode()), 'type': 35632}
-                          for name, src in THREE_SHADERLIB.items() if name.endswith('_frag')}
+SHADERS = {name: {'uri': 'data:text/plain;base64,%s' % str(base64.urlsafe_b64encode(src.encode()), encoding='utf-8'),
+                  'type': 35633 if name.endswith('_vert') else 35632}
+           for name, src in THREE_SHADERLIB.items()}
+
 
 PROGRAMS = {
     'basic': {
-        'attributes': [],
-        'fragmentShader': THREE_FRAGMENT_SHADERS['meshbasic_frag'],
-        'vertexShader': THREE_VERTEX_SHADERS['meshbasic_vert']
+        'attributes': ['position', 'normal', 'uv'],
+        'fragmentShader': SHADERS['meshbasic_frag'],
+        'vertexShader': SHADERS['meshbasic_vert']
     }
 }
 
+
 TECHNIQUES = {
     'MeshBasicMaterial': {
-        'parameters': {},
-        'attributes': {},
-        'program': PROGRAMS['basic'],
-        'uniforms': {},
-        'states': {'enable': []}
+        'parameters': {
+            'position': {'type': gl.GL_FLOAT_VEC3,
+                         'semantic': 'POSITION'},
+            'normal': {'type': gl.GL_FLOAT_VEC3,
+                       'semantic': 'NORMAL'},
+            'uv': {'type': gl.GL_FLOAT_VEC2,
+                   'semantic': 'TEXCOORD'},
+            'modelViewMatrix': {'type': gl.GL_FLOAT_MAT4,
+                                'semantic': 'MODELVIEW'},
+            'modelMatrix': {'type': gl.GL_FLOAT_MAT4,
+                            'semantic': 'MODEL'},
+            'viewMatrix': {'type': gl.GL_FLOAT_MAT4,
+                           'semantic': 'VIEW'},
+            'normalMatrix': {'type': gl.GL_FLOAT_MAT3,
+                             'semantic': 'MODELVIEWINVERSETRANSPOSE'},
+            'projectionMatrix': {'type': gl.GL_FLOAT_MAT4,
+                                 'semantic': 'PROJECTION'},
+            'cameraPosition': {'type': gl.GL_FLOAT_VEC3}
+        },
+        'attributes': {glsl_name: glsl_name for glsl_name in PROGRAMS['basic']['attributes']},
+        'program': 'basic',
+        'uniforms': {glsl_name: glsl_name for glsl_name in ['modelMatrix', 'modelViewMatrix', 'projectionMatrix', 'viewMatrix', 'normalMatrix', 'cameraPosition']},
+        'states': {'enable': [gl.GL_DEPTH_TEST]}
     }
 }
 
@@ -100,7 +138,7 @@ def convert_three(three_json):
             for attr_name, attr in data['attributes'].items():
                 buffer_bytes = np.array(attr['array']).tobytes()
                 attr_buffer = {'type': 'text',
-                               'uri': 'data:application/octet-stream;base64,%s' % base64.urlsafe_b64encode(buffer_bytes)} # TODO: fix
+                               'uri': 'data:application/octet-stream;base64,%s' % str(base64.urlsafe_b64encode(buffer_bytes), encoding='utf-8')}
                 attr_buffer_id = '%s: %s' % (geom['uuid'], attr_name)
                 gltf['buffers'][attr_buffer_id] = attr_buffer
                 attr_bufferView = {'buffer': attr_buffer_id,
