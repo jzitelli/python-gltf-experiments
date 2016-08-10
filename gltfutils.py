@@ -118,7 +118,8 @@ def setup_shaders(gltf, uri_path):
     for shader_name, shader in gltf['shaders'].items():
         uri = shader['uri']
         if uri.startswith('data:text/plain;base64,'):
-            shader_str = base64.b64decode(uri.split(',')[1])
+            shader_str = base64.urlsafe_b64decode(uri.split(',')[1]).decode()
+            print('* decoded shader "%s":\n%s' % (shader_name, shader_str))
         else:
             filename = os.path.join(uri_path, shader['uri'])
             shader_str = open(filename).read()

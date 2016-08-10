@@ -35,7 +35,8 @@ for filename in os.listdir(os.path.join(THREE_SHADERS_ROOT, 'ShaderLib')):
         with open(os.path.join(THREE_SHADERS_ROOT, 'ShaderLib', filename)) as f:
             THREE_SHADERLIB[filename[:-len('.glsl')]] = f.read()
 
-VERTEX_PREFIX = '\n'.join(['uniform mat4 modelMatrix;',
+VERTEX_PREFIX = '\n'.join(['precision highp float;',
+                           'uniform mat4 modelMatrix;',
                            'uniform mat4 modelViewMatrix;',
                            'uniform mat4 projectionMatrix;',
                            'uniform mat4 viewMatrix;',
@@ -43,16 +44,21 @@ VERTEX_PREFIX = '\n'.join(['uniform mat4 modelMatrix;',
                            'uniform vec3 cameraPosition;',
                            'attribute vec3 position;',
                            'attribute vec3 normal;',
-                           'attribute vec2 uv;'])
+                           'attribute vec2 uv;',
+                           '#define FLAT_SHADED 1',
+                           '#define NUM_CLIPPING_PLANES 0'])
 
-FRAGMENT_PREFIX = '\n'.join(['uniform mat4 viewMatrix;',
-			     'uniform vec3 cameraPosition;'])
+FRAGMENT_PREFIX = '\n'.join(['precision highp float;',
+                             'uniform mat4 viewMatrix;',
+			     'uniform vec3 cameraPosition;',
+                             '#define FLAT_SHADED 1',
+                             '#define NUM_CLIPPING_PLANES 0'])
 
 for name, src in list(THREE_SHADERLIB.items()):
     m = re.search(r"#include +<(?P<shaderchunk>\w+)>", src)
     while m is not None:
         src = src.replace(m.group(0), THREE_SHADERCHUNK[m.group('shaderchunk')], 1)
-        m = re.search(r"#include +<(?P<shaderchunk>\w+)>", src)
+        m = re.search(r" *#include +<(?P<shaderchunk>\w+)> *", src)
     if name.endswith('_vert'):
         src = '\n'.join([VERTEX_PREFIX, src])
     else:
@@ -60,8 +66,9 @@ for name, src in list(THREE_SHADERLIB.items()):
     THREE_SHADERLIB[name] = src
 
 
-SHADERS = {name: {'uri': 'data:text/plain;base64,%s' % str(base64.urlsafe_b64encode(src.encode()), encoding='utf-8'),
-                  'type': 35633 if name.endswith('_vert') else 35632}
+# TODO: support all shader variants yielded by #define permutations
+SHADERS = {name: {'uri': 'data:text/plain;base64,%s' % base64.urlsafe_b64encode(bytes(src, 'utf-8')).decode('utf-8'),
+                  'type': gl.GL_VERTEX_SHADER if name.endswith('_vert') else gl.GL_FRAGMENT_SHADER}
            for name, src in THREE_SHADERLIB.items()}
 
 
@@ -76,6 +83,7 @@ PROGRAMS = {
 
 TECHNIQUES = {
     'MeshBasicMaterial': {
+        'program': 'basic',
         'parameters': {
             'position': {'type': gl.GL_FLOAT_VEC3,
                          'semantic': 'POSITION'},
@@ -93,22 +101,32 @@ TECHNIQUES = {
                              'semantic': 'MODELVIEWINVERSETRANSPOSE'},
             'projectionMatrix': {'type': gl.GL_FLOAT_MAT4,
                                  'semantic': 'PROJECTION'},
-            'cameraPosition': {'type': gl.GL_FLOAT_VEC3}
+            'cameraPosition': {'type': gl.GL_FLOAT_VEC3},
+            'diffuse': {'type': gl.GL_FLOAT_VEC3},
+            'opacity': {'type': gl.GL_FLOAT}
         },
         'attributes': {glsl_name: glsl_name for glsl_name in PROGRAMS['basic']['attributes']},
-        'program': 'basic',
-        'uniforms': {glsl_name: glsl_name for glsl_name in ['modelMatrix', 'modelViewMatrix', 'projectionMatrix', 'viewMatrix', 'normalMatrix', 'cameraPosition']},
+        'uniforms': {glsl_name: glsl_name for glsl_name in ['modelMatrix', 'modelViewMatrix', 'projectionMatrix', 'viewMatrix', 'normalMatrix', 'cameraPosition', 'diffuse', 'opacity']},
         'states': {'enable': [gl.GL_DEPTH_TEST]}
     }
 }
 
 
-TYPED_ARRAY_MAP = {
+TYPED_ARRAY_GLTYPE = {
     'Int8Array':    5120,
     'Uint8Array':   5121,
     'Int16Array':   5122,
     'Uint16Array':  5123,
     'Float32Array': 5126
+}
+
+
+TYPED_ARRAY_DTYPE = {
+    'Int8Array':    np.int8,
+    'Uint8Array':   np.uint8,
+    'Int16Array':   np.int16,
+    'Uint16Array':  np.uint16,
+    'Float32Array': np.float32
 }
 
 
@@ -136,9 +154,9 @@ def convert_three(three_json):
         if geom['type'] == 'BufferGeometry':
             data = geom['data']
             for attr_name, attr in data['attributes'].items():
-                buffer_bytes = np.array(attr['array']).tobytes() # TODO: dtype
+                buffer_bytes = np.array(attr['array'], dtype=TYPED_ARRAY_DTYPE[attr['type']]).tobytes()
                 attr_buffer = {'type': 'text',
-                               'uri': 'data:application/octet-stream;base64,%s' % str(base64.urlsafe_b64encode(buffer_bytes), encoding='utf-8')}
+                               'uri': 'data:application/octet-stream;base64,%s' % base64.b64encode(buffer_bytes).decode('utf-8')}
                 attr_buffer_id = '%s: %s' % (geom['uuid'], attr_name)
                 gltf['buffers'][attr_buffer_id] = attr_buffer
                 attr_bufferView = {'buffer': attr_buffer_id,
@@ -150,16 +168,16 @@ def convert_three(three_json):
                 attr_accessor = {'bufferView': attr_bufferView_id,
                                  'byteOffset': 0,
                                  'byteStride': 0,
-                                 'componentType': TYPED_ARRAY_MAP[attr['type']],
+                                 'componentType': TYPED_ARRAY_GLTYPE[attr['type']],
                                  'count': len(attr['array']) // attr['itemSize'],
                                  'type': ITEMSIZE_MAP[attr['itemSize']]} # TODO: min/max properties?
                 attr_accessor_id = attr_bufferView_id
                 gltf['accessors'][attr_accessor_id] = attr_accessor
             index = data['index']
-            index_buffer_bytes = np.array(index['array']).tobytes() # TODO: dtype
+            index_buffer_bytes = np.array(index['array'], dtype=TYPED_ARRAY_DTYPE[index['type']]).tobytes()
             index_buffer = {'type': 'text',
-                            'uri': 'data:application/octet-stream;base64,%s' % str(base64.urlsafe_b64encode(index_buffer_bytes), encoding='utf-8')}
-            index_buffer_id = geom['uuid']
+                            'uri': 'data:application/octet-stream;base64,%s' % base64.b64encode(index_buffer_bytes).decode('utf-8')}
+            index_buffer_id = '%s: index' % geom['uuid']
             gltf['buffers'][index_buffer_id] = index_buffer
             index_bufferView = {'buffer': index_buffer_id,
                                 'byteOffset': 0,
@@ -170,7 +188,7 @@ def convert_three(three_json):
             index_accessor = {'bufferView': index_bufferView_id,
                               'byteOffset': 0,
                               'byteStride': 0,
-                              'componentType': TYPED_ARRAY_MAP[index['type']],
+                              'componentType': TYPED_ARRAY_GLTYPE[index['type']],
                               'count': len(index['array']),
                               'type': ITEMSIZE_MAP[index['itemSize']]}
             index_accessor_id = index_bufferView_id
@@ -201,7 +219,7 @@ def convert_three(three_json):
             if 'name' in mat:
                 material['name'] = mat['name']
             if 'color' in mat:
-                pass # TODO
+                values['diffuse'] = [1.0, 0, 0] # TODO
             material_id = mat['uuid']
             gltf['materials'][material_id] = material
             technique = TECHNIQUES['MeshBasicMaterial']
@@ -240,10 +258,10 @@ def convert_three(three_json):
                 primitive = {
                     'attributes': {attr_name: '%s: %s' % (geom['uuid'], attr_name)
                                    for attr_name in data['attributes'].keys()},
-                    'indices': geom['uuid'],
+                    'indices': '%s: index' % geom['uuid'],
                     'material': mat_id
                 }
-                primitive['mode'] = 4 # TRIANGLES
+                primitive['mode'] = gl.GL_TRIANGLES
                 mesh = {'primitives': [primitive]}
                 node['meshes'] = [mesh_id]
                 gltf['meshes'][mesh_id] = mesh
