@@ -161,7 +161,7 @@ def set_draw_state(primitive, gltf,
                 else:
                     gl.glUniformMatrix3fv(location, 1, True, np.ascontiguousarray(normal_matrix, dtype=np.float32))
             else:
-                raise Exception('unhandled semantic: %s' % parameter['semantic'])
+                pass #raise Exception('unhandled semantic: %s' % parameter['semantic'])
         else:
             value = material_values.get(parameter_name, parameter.get('value'))
             if value:
@@ -254,9 +254,9 @@ def draw_node(node, gltf,
 def update_world_matrices(node, gltf, world_matrix=None):
     if 'matrix' not in node:
         matrix = pyrr.matrix44.create_from_quaternion(np.array(node['rotation']))
-        matrix[0, 0] *= node['scale'][0]
-        matrix[1, 1] *= node['scale'][1]
-        matrix[2, 2] *= node['scale'][2]
+        matrix[:3, 0] *= node['scale'][0]
+        matrix[:3, 1] *= node['scale'][1]
+        matrix[:3, 2] *= node['scale'][2]
         matrix[:3, 3] = node['translation']
     else:
         matrix = np.array(node['matrix']).reshape((4, 4)).T

@@ -219,12 +219,14 @@ def convert_three(three_json):
     def convert_material(mat):
         if mat['type'] == 'MeshBasicMaterial':
             material = {'technique': 'MeshBasicMaterial',
-                        'values': {}}
+                        'values': {'cameraPosition': [0.0, 0.0, 0.0],
+                                   'diffuse': [1.0, 0.0, 0.0],
+                                   'opacity': 1.0}}
             values = material['values']
             if 'name' in mat:
                 material['name'] = mat['name']
             if 'color' in mat:
-                values['diffuse'] = [1.0, 0, 0] # TODO
+                pass # TODO
             material_id = mat['uuid']
             gltf['materials'][material_id] = material
             technique = TECHNIQUES['MeshBasicMaterial']
