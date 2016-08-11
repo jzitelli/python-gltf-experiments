@@ -13,6 +13,7 @@ import cyglfw3 as glfw
 
 
 import gltfutils as gltfu
+from JSobject import JSobject
 
 
 def setup_glfw(width=900, height=600, double_buffered=False):
@@ -46,22 +47,24 @@ def show_gltf(gltf, uri_path, scene_name=None):
     scene = gltf['scenes'][scene_name]
     window = setup_glfw()
 
-    gl.glClearColor(0.1, 0.2, 0.3, 1.0);
+    try:
+        gl.glClearColor(0.1, 0.2, 0.3, 1.0);
 
-    renderer = Renderer()
-    renderer.set_scene(gltf, uri_path, gltf.scene)
+        renderer = Renderer()
+        renderer.set_scene(gltf, uri_path, gltf.scene)
 
-    print('* starting render loop...')
-    sys.stdout.flush()
+        print('* starting render loop...')
+        sys.stdout.flush()
 
-    while not glfw.WindowShouldClose(window):
-        glfw.PollEvents()
-        renderer.render()
-        glfw.SwapBuffers(window)
+        while not glfw.WindowShouldClose(window):
+            glfw.PollEvents()
+            renderer.render()
+            glfw.SwapBuffers(window)
 
-    del renderer
-    glfw.DestroyWindow(window)
-    glfw.Terminate()
+        del renderer
+    finally:
+        glfw.DestroyWindow(window)
+        glfw.Terminate()
 
 
 if __name__ == "__main__":
@@ -83,6 +86,6 @@ if __name__ == "__main__":
         print('* loaded "%s"' % args.filename)
     except Exception as err:
         raise Exception('failed to load %s:\n%s' % (args.filename, err))
-    gltf = gltfu.JSobject(gltf)
+    gltf = JSobject(gltf)
 
     show_gltf(gltf, uri_path)

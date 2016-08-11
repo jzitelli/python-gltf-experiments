@@ -47,7 +47,7 @@ VERTEX_PREFIX = '\n'.join(['#version 420',
                            'attribute vec3 position;',
                            'attribute vec3 normal;',
                            'attribute vec2 uv;',
-                           '#define FLAT_SHADED 1',
+                           '#define FLAT_SHADED',
                            '#define NUM_CLIPPING_PLANES 0'])
 
 FRAGMENT_PREFIX = '\n'.join(['#version 420',
@@ -55,8 +55,9 @@ FRAGMENT_PREFIX = '\n'.join(['#version 420',
                              'precision highp int;',
                              'uniform mat4 viewMatrix;',
 			     'uniform vec3 cameraPosition;',
-                             '#define FLAT_SHADED 1',
-                             '#define NUM_CLIPPING_PLANES 0'])
+                             '#define FLAT_SHADED',
+                             '#define NUM_CLIPPING_PLANES 0',
+                             'vec4 linearToOutputTexel( vec4 value ) { return value; }'])
 
 for name, src in list(THREE_SHADERLIB.items()):
     m = re.search(r"#include +<(?P<shaderchunk>\w+)>", src)

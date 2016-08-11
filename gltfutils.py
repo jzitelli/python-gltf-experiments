@@ -26,94 +26,6 @@ GLTF_BUFFERVIEW_TYPE_SIZES = MappingProxyType({
 })
 
 
-"""For the dict-subclass JSobject (defined below),
-user-defined attribute names may collide with
-the inherited dict methods (e.g. "keys", "values", "items", etc),
-overwriting the inherited binding.  For these special cases,
-the built-in dict methods are also bound to corresponding '__'-prefixed
-attribute names (e.g. "__keys", "__values", "__items", etc)."""
-_JSOBJECT_DICT_ATTR_RENAMES = {k: '__%s' % k
-                               for k in {}.__dir__()
-                               if not k.startswith('__')}
-
-
-class JSobject(dict):
-    """Python object-based representation of JSON data.
-    Useful for interactively exploring JSON data via ipython tab-completion."""
-    _BAD_NAMES = frozenset([name for name in {}.__dir__()
-                            if name not in _JSOBJECT_DICT_ATTR_RENAMES])
-    def __init__(self, json_dict):
-        dict.__init__(self)
-        for name, rename in _JSOBJECT_DICT_ATTR_RENAMES.items():
-            dict.__setattr__(self, rename, self.__getattribute__(name))
-        for k, v in json_dict.items():
-            self[k] = v
-    def __setattr__(self, k, v):
-        if k in JSobject._BAD_NAMES:
-            raise Exception('attribute name collision: %s' % k)
-        if isinstance(v, dict):
-            v = JSobject(v)
-        dict.__setitem__(self, k, v)
-        dict.__setattr__(self, k, v)
-    def __setitem__(self, k, v):
-        self.__setattr__(k, v)
-    def __delattr__(self, k):
-        dict.__delitem__(self, k)
-        dict.__delattr__(self, k)
-    def __delitem__(self, k):
-        self.__delattr__(k)
-
-
-class Node(object):
-    def __init__(self, gltf_node, gltf_nodes):
-        if 'matrix' in gltf_node:
-            self.matrix = np.array(gltf_node.matrix, dtype=np.float64).reshape((4,4))
-            self.translation = self.matrix[:3, 3]
-            self.scale = np.array([np.linalg.norm(self.matrix[:3, j]) for j in (0,1,2)])
-            if np.linalg.det(self.matrix) < 0:
-                self.scale[0] *= -1
-            # TODO:
-            # self.quaternion = pyrr.quaternion.
-        else:
-            self.translation = np.array(gltf_node.translation, dtype=np.float64)
-            self.quaternion = np.array(gltf_node.quaternion, dtype=np.float64)
-            self.scale = np.array(gltf_node.scale, dtype=np.float64)
-            self.update_matrix()
-        self.children = [Node(gltf_nodes[node_name], gltf_nodes)
-                         for node_name in gltf_node.children]
-        self.matrix_needs_update = False
-    def update_matrix(self):
-        if self.matrix_needs_update:
-            self.matrix = pyrr.matrix44.create_from_quaternion(self.quaternion)
-            self.matrix.diagonal()[:3] *= self.scale
-            self.matrix[:3, 2] = self.translation
-            self.matrix_needs_update = False
-    def update_world_matrices(self, world_matrix=None):
-        self.update_matrix()
-        if world_matrix is None:
-            world_matrix = self.matrix
-        else:
-            world_matrix = world_matrix @ self.matrix
-        self.world_matrix = world_matrix
-        for child in self.children:
-            child.update_world_matrices(world_matrix=world_matrix)
-
-
-class Scene(JSobject):
-    def __init__(self, gltf_dict, scene=None):
-        JSobject.__init__(self, gltf_dict)
-        self.nodes = {node_name: Node(gltf_node, self.nodes)
-                      for node_name, gltf_node in self.nodes.items()}
-        _scene = self.pop('scene')
-        if scene is None:
-            scene = _scene
-        scenes = self.pop('scenes')
-        self.root_nodes = [self.nodes[node_name] for node_name in scenes[scene].nodes]
-    def update_world_matrices(self):
-        for node in self.root_nodes:
-            node.update_world_matrices()
-
-
 def setup_shaders(gltf, uri_path):
     for shader_name, shader in gltf['shaders'].items():
         uri = shader['uri']
@@ -128,7 +40,7 @@ def setup_shaders(gltf, uri_path):
         gl.glShaderSource(shader_id, shader_str)
         gl.glCompileShader(shader_id)
         if not gl.glGetShaderiv(shader_id, gl.GL_COMPILE_STATUS):
-            raise Exception('failed to compile shader "%s"' % shader_name)
+            raise Exception('failed to compile shader "%s":\n%s' % (shader_name, gl.glGetShaderInfoLog(shader_id).decode()))
         print('* compiled shader "%s"' % shader_name)
         shader['id'] = shader_id
 
@@ -213,7 +125,7 @@ def setup_buffers(gltf, uri_path):
         print('* created buffer "%s"' % bufferView_name)
 
 
-def setup_draw_state(primitive, gltf,
+def set_draw_state(primitive, gltf,
                      modelview_matrix=None, projection_matrix=None,
                      view_matrix=None, normal_matrix=None):
     material = gltf['materials'][primitive['material']]
@@ -224,8 +136,8 @@ def setup_draw_state(primitive, gltf,
     textures = gltf.get('textures', {})
     samplers = gltf.get('samplers', {})
     gl.glUseProgram(program['id'])
-    setup_draw_state.enabled_states = technique.get('states', {}).get('enable', setup_draw_state.enabled_states)
-    for state in setup_draw_state.enabled_states:
+    set_draw_state.enabled_states = technique.get('states', {}).get('enable', set_draw_state.enabled_states)
+    for state in set_draw_state.enabled_states:
         gl.glEnable(state)
     material_values = material.get('values', {})
     for uniform_name, parameter_name in technique['uniforms'].items():
@@ -283,29 +195,29 @@ def setup_draw_state(primitive, gltf,
             gl.glBindBuffer(bufferView['target'], buffer_id)
             gl.glVertexAttribPointer(location, GLTF_BUFFERVIEW_TYPE_SIZES[accessor['type']],
                                      accessor['componentType'], False, accessor['byteStride'], c_void_p(accessor['byteOffset']))
-            setup_draw_state.enabled_locations.append(location)
+            set_draw_state.enabled_locations.append(location)
         else:
             raise Exception('expected a semantic property for attribute "%s"' % attribute_name)
-setup_draw_state.enabled_locations = []
-setup_draw_state.enabled_states = []
+set_draw_state.enabled_locations = []
+set_draw_state.enabled_states = []
 
 
 def end_draw_state():
-    for loc in setup_draw_state.enabled_locations:
+    for loc in set_draw_state.enabled_locations:
         gl.glDisableVertexAttribArray(loc)
-    setup_draw_state.enabled_locations = []
-    for state in setup_draw_state.enabled_states:
+    set_draw_state.enabled_locations = []
+    for state in set_draw_state.enabled_states:
         gl.glDisable(state)
-    setup_draw_state.enabled_states = []
+    set_draw_state.enabled_states = []
 
 
 def draw_primitive(primitive, gltf,
                    modelview_matrix=None, projection_matrix=None, view_matrix=None, normal_matrix=None):
     accessors = gltf['accessors']
     bufferViews = gltf['bufferViews']
-    setup_draw_state(primitive, gltf,
-                     modelview_matrix=modelview_matrix, projection_matrix=projection_matrix,
-                     view_matrix=view_matrix, normal_matrix=normal_matrix)
+    set_draw_state(primitive, gltf,
+                   modelview_matrix=modelview_matrix, projection_matrix=projection_matrix,
+                   view_matrix=view_matrix, normal_matrix=normal_matrix)
     index_accessor = accessors[primitive['indices']]
     index_bufferView = bufferViews[index_accessor['bufferView']]
     gl.glBindBuffer(index_bufferView['target'], index_bufferView['id'])
@@ -340,7 +252,14 @@ def draw_node(node, gltf,
 
 
 def update_world_matrices(node, gltf, world_matrix=None):
-    matrix = np.array(node['matrix']).reshape((4, 4)).T
+    if 'matrix' not in node:
+        matrix = pyrr.matrix44.create_from_quaternion(np.array(node['rotation']))
+        matrix[0, 0] *= node['scale'][0]
+        matrix[1, 1] *= node['scale'][1]
+        matrix[2, 2] *= node['scale'][2]
+        matrix[:3, 3] = node['translation']
+    else:
+        matrix = np.array(node['matrix']).reshape((4, 4)).T
     if world_matrix is None:
         world_matrix = matrix
     else:
