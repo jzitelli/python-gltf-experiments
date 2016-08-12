@@ -143,6 +143,13 @@ ITEMSIZE_MAP = {
 }
 
 
+GLTF_SEMANTIC = {
+    'position': 'POSITION',
+    'normal':   'NORMAL',
+    'uv':       'TEXCOORD'
+}
+
+
 def convert_three(three_json):
     three_object = three_json['object']
     if three_object['type'] != 'Scene':
@@ -263,7 +270,7 @@ def convert_three(three_json):
             if geom['type'] == 'BufferGeometry':
                 data = geom['data']
                 primitive = {
-                    'attributes': {attr_name: '%s: %s' % (geom['uuid'], attr_name)
+                    'attributes': {GLTF_SEMANTIC[attr_name]: '%s: %s' % (geom['uuid'], attr_name)
                                    for attr_name in data['attributes'].keys()},
                     'indices': '%s: index' % geom['uuid'],
                     'material': mat_id

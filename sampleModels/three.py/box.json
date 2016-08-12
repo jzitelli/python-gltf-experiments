@@ -1,0 +1,32 @@
+{
+  "geometries": [],
+  "images": [],
+  "materials": [],
+  "metadata": {
+    "generator": "three.py",
+    "type": "Object",
+    "version": 4.4
+  },
+  "object": {
+    "children": [],
+    "name": "unnamed Scene 0",
+    "position": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "type": "Scene",
+    "uuid": "2800a912-c0b3-48f9-acd4-ab4b70a6588c"
+  },
+  "textures": []
+}
