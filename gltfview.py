@@ -41,11 +41,11 @@ def setup_glfw(width=900, height=600, double_buffered=False):
     return window
 
 
-def show_gltf(gltf, uri_path, scene_name=None):
+def show_gltf(gltf, uri_path, scene_name=None, double_buffered=False):
     if scene_name is None:
         scene_name = gltf['scene']
     scene = gltf['scenes'][scene_name]
-    window = setup_glfw()
+    window = setup_glfw(double_buffered=double_buffered)
 
     try:
         gl.glClearColor(0.1, 0.2, 0.3, 1.0);
@@ -88,4 +88,4 @@ if __name__ == "__main__":
         raise Exception('failed to load %s:\n%s' % (args.filename, err))
     gltf = JSobject(gltf)
 
-    show_gltf(gltf, uri_path)
+    show_gltf(gltf, uri_path, double_buffered=(not args.openvr))

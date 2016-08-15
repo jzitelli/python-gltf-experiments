@@ -126,8 +126,10 @@ def setup_buffers(gltf, uri_path):
 
 
 def set_draw_state(primitive, gltf,
-                     modelview_matrix=None, projection_matrix=None,
-                     view_matrix=None, normal_matrix=None):
+                   modelview_matrix=None,
+                   projection_matrix=None,
+                   view_matrix=None,
+                   normal_matrix=None):
     material = gltf['materials'][primitive['material']]
     technique = gltf['techniques'][material['technique']]
     program = gltf['programs'][technique['program']]
@@ -187,15 +189,16 @@ def set_draw_state(primitive, gltf,
         parameter = technique['parameters'][parameter_name]
         semantic = parameter.get('semantic')
         if semantic:
-            accessor = accessors[primitive['attributes'][semantic]]
-            bufferView = bufferViews[accessor['bufferView']]
-            buffer_id = bufferView['id']
-            location = program['attribute_locations'][attribute_name]
-            gl.glEnableVertexAttribArray(location)
-            gl.glBindBuffer(bufferView['target'], buffer_id)
-            gl.glVertexAttribPointer(location, GLTF_BUFFERVIEW_TYPE_SIZES[accessor['type']],
-                                     accessor['componentType'], False, accessor['byteStride'], c_void_p(accessor['byteOffset']))
-            set_draw_state.enabled_locations.append(location)
+            if semantic in primitive['attributes']:
+                accessor = accessors[primitive['attributes'][semantic]]
+                bufferView = bufferViews[accessor['bufferView']]
+                buffer_id = bufferView['id']
+                location = program['attribute_locations'][attribute_name]
+                gl.glEnableVertexAttribArray(location)
+                gl.glBindBuffer(bufferView['target'], buffer_id)
+                gl.glVertexAttribPointer(location, GLTF_BUFFERVIEW_TYPE_SIZES[accessor['type']],
+                                         accessor['componentType'], False, accessor['byteStride'], c_void_p(accessor['byteOffset']))
+                set_draw_state.enabled_locations.append(location)
         else:
             raise Exception('expected a semantic property for attribute "%s"' % attribute_name)
 set_draw_state.enabled_locations = []
@@ -212,12 +215,17 @@ def end_draw_state():
 
 
 def draw_primitive(primitive, gltf,
-                   modelview_matrix=None, projection_matrix=None, view_matrix=None, normal_matrix=None):
+                   modelview_matrix=None,
+                   projection_matrix=None,
+                   view_matrix=None,
+                   normal_matrix=None):
     accessors = gltf['accessors']
     bufferViews = gltf['bufferViews']
     set_draw_state(primitive, gltf,
-                   modelview_matrix=modelview_matrix, projection_matrix=projection_matrix,
-                   view_matrix=view_matrix, normal_matrix=normal_matrix)
+                   modelview_matrix=modelview_matrix,
+                   projection_matrix=projection_matrix,
+                   view_matrix=view_matrix,
+                   normal_matrix=normal_matrix)
     index_accessor = accessors[primitive['indices']]
     index_bufferView = bufferViews[index_accessor['bufferView']]
     gl.glBindBuffer(index_bufferView['target'], index_bufferView['id'])
@@ -229,10 +237,16 @@ def draw_primitive(primitive, gltf,
 
 
 def draw_mesh(mesh, gltf,
-              modelview_matrix=None, projection_matrix=None, view_matrix=None, normal_matrix=None):
+              modelview_matrix=None,
+              projection_matrix=None,
+              view_matrix=None,
+              normal_matrix=None):
     for primitive in mesh['primitives']:
         draw_primitive(primitive, gltf,
-                       modelview_matrix=modelview_matrix, projection_matrix=projection_matrix, view_matrix=view_matrix, normal_matrix=normal_matrix)
+                       modelview_matrix=modelview_matrix,
+                       projection_matrix=projection_matrix,
+                       view_matrix=view_matrix,
+                       normal_matrix=normal_matrix)
 
 
 def draw_node(node, gltf,
