@@ -80,7 +80,6 @@ if __name__ == "__main__":
         from OpenGLRenderer import OpenGLRenderer as Renderer
 
     uri_path = os.path.dirname(args.filename)
-    gltf = None
     try:
         gltf = json.loads(open(args.filename).read())
         print('* loaded "%s"' % args.filename)
