@@ -31,7 +31,7 @@ class OpenGLRenderer(object):
                 if 'perspective' in camera:
                     perspective = camera['perspective']
                     self.projection_matrix = pyrr.matrix44.create_perspective_projection_matrix(np.rad2deg(perspective['yfov']), perspective['aspectRatio'],
-                                                                                                perspective['znear'], perspective['zfar']).T
+                                                                                                perspective['znear'], perspective['zfar'])
                 elif 'orthographic' in camera:
                     raise Exception('TODO')
                 self.view_matrix = np.linalg.inv(node['world_matrix'])
