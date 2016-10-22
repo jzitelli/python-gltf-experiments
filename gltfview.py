@@ -106,7 +106,8 @@ def show_gltf(gltf, uri_path, scene_name=None, openvr=False):
 
     print('* starting render loop...')
     sys.stdout.flush()
-    
+
+    stats_printed = False
     while not glfw.WindowShouldClose(window):
         process_input()
         if openvr:
@@ -118,6 +119,10 @@ def show_gltf(gltf, uri_path, scene_name=None, openvr=False):
                 gltfu.draw_node(node, gltf,
                                 projection_matrix=projection_matrix,
                                 view_matrix=np.linalg.inv(world_matrix))
+        if not stats_printed:
+            print("num draw calls: %d" % gltfu.num_draw_calls)
+            sys.stdout.flush()
+            stats_printed = True      
         glfw.SwapBuffers(window)
 
     if openvr:

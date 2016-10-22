@@ -149,19 +149,20 @@ def set_draw_state(primitive, gltf,
             if parameter['semantic'] == 'MODELVIEW':
                 if 'node' in parameter:
                     world_matrix = gltf['nodes'][parameter['node']]['world_matrix']
-                    gl.glUniformMatrix4fv(location, 1, True, np.ascontiguousarray(view_matrix.dot(world_matrix), dtype=np.float32))
+                    world_matrix.dot(view_matrix, out=set_draw_state.modelview_matrix)
+                    gl.glUniformMatrix4fv(location, 1, False, set_draw_state.modelview_matrix)
                 else:
-                    gl.glUniformMatrix4fv(location, 1, True, np.ascontiguousarray(modelview_matrix, dtype=np.float32))
+                    gl.glUniformMatrix4fv(location, 1, False, modelview_matrix)
             elif parameter['semantic'] == 'PROJECTION':
                 if 'node' in parameter:
                     raise Exception('TODO')
                 else:
-                    gl.glUniformMatrix4fv(location, 1, False, np.ascontiguousarray(projection_matrix, dtype=np.float32))
+                    gl.glUniformMatrix4fv(location, 1, False, projection_matrix)
             elif parameter['semantic'] == 'MODELVIEWINVERSETRANSPOSE':
                 if 'node' in parameter:
                     raise Exception('TODO')
                 else:
-                    gl.glUniformMatrix3fv(location, 1, True, np.ascontiguousarray(normal_matrix, dtype=np.float32))
+                    gl.glUniformMatrix3fv(location, 1, True, normal_matrix)
             else:
                 pass #raise Exception('unhandled semantic: %s' % parameter['semantic'])
         else:
@@ -203,6 +204,7 @@ def set_draw_state(primitive, gltf,
             raise Exception('expected a semantic property for attribute "%s"' % attribute_name)
 set_draw_state.enabled_locations = []
 set_draw_state.enabled_states = []
+set_draw_state.modelview_matrix = np.empty((4,4), dtype=np.float32)
 
 
 def end_draw_state():
@@ -212,6 +214,12 @@ def end_draw_state():
     for state in set_draw_state.enabled_states:
         gl.glDisable(state)
     set_draw_state.enabled_states = []
+
+
+num_draw_calls = 0
+
+def reset_stats():
+    num_draw_calls = 0
 
 
 def draw_primitive(primitive, gltf,
@@ -231,8 +239,10 @@ def draw_primitive(primitive, gltf,
     gl.glBindBuffer(index_bufferView['target'], index_bufferView['id'])
     gl.glDrawElements(primitive['mode'], index_accessor['count'], index_accessor['componentType'],
                       c_void_p(index_accessor['byteOffset']))
-    if gl.glGetError() != gl.GL_NO_ERROR:
-        raise Exception('error drawing elements')
+    global num_draw_calls
+    num_draw_calls += 1
+    # if gl.glGetError() != gl.GL_NO_ERROR:
+    #     raise Exception('error drawing elements')
     end_draw_state()
 
 
@@ -251,18 +261,17 @@ def draw_mesh(mesh, gltf,
 
 def draw_node(node, gltf,
               projection_matrix=None, view_matrix=None):
-    if view_matrix is None:
-        modelview_matrix = node['world_matrix']
-    else:
-        modelview_matrix = view_matrix.dot(node['world_matrix'])
-    normal_matrix = np.linalg.inv(modelview_matrix[:3,:3]).T
+    node['world_matrix'].dot(view_matrix, out=draw_node.modelview_matrix)
+    normal_matrix = np.linalg.inv(draw_node.modelview_matrix[:3,:3])
     meshes = node.get('meshes', [])
     for mesh_name in meshes:
         draw_mesh(gltf['meshes'][mesh_name], gltf,
-                  modelview_matrix=modelview_matrix, projection_matrix=projection_matrix, view_matrix=view_matrix, normal_matrix=normal_matrix)
+                  modelview_matrix=draw_node.modelview_matrix,
+                  projection_matrix=projection_matrix, view_matrix=view_matrix, normal_matrix=normal_matrix)
     for child in node['children']:
         draw_node(gltf['nodes'][child], gltf,
                   projection_matrix=projection_matrix, view_matrix=view_matrix)
+draw_node.modelview_matrix = np.empty((4,4), dtype=np.float32)
 
 
 def update_world_matrices(node, gltf, world_matrix=None):
@@ -273,11 +282,11 @@ def update_world_matrices(node, gltf, world_matrix=None):
         matrix[:3, 2] *= node['scale'][2]
         matrix[:3, 3] = node['translation']
     else:
-        matrix = np.array(node['matrix']).reshape((4, 4)).T
+        matrix = np.array(node['matrix'], dtype=np.float32).reshape((4, 4)).T
     if world_matrix is None:
         world_matrix = matrix
     else:
         world_matrix = world_matrix.dot(matrix)
-    node['world_matrix'] = world_matrix
+    node['world_matrix'] = world_matrix.T
     for child in [gltf['nodes'][n] for n in node['children']]:
         update_world_matrices(child, gltf, world_matrix=world_matrix)
