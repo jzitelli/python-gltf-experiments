@@ -9,12 +9,10 @@ from openvr.tracked_devices_actor import TrackedDevicesActor
 
 
 import gltfutils as gltfu
-from OpenGLRenderer import OpenGLRenderer
 
 
-class OpenVRRenderer(OpenGLRenderer):
+class OpenVRRenderer(object):
     def __init__(self, multisample=0, znear=0.1, zfar=1000):
-        OpenGLRenderer.__init__(self)
         self.vr_system = openvr.init(openvr.VRApplication_Scene)
         w, h = self.vr_system.getRecommendedRenderTargetSize()
         self.vr_framebuffers = (OpenVRFramebuffer(w, h, multisample=multisample),
@@ -37,19 +35,7 @@ class OpenVRRenderer(OpenGLRenderer):
         self.controllers = TrackedDevicesActor(self.poses)
         self.controllers.show_controllers_only = False
         self.controllers.init_gl()
-    def set_scene(self, gltf, uri_path, scene_name=None):
-        if scene_name is None:
-            scene_name = gltf.scene
-        gltfu.setup_shaders(gltf, uri_path)
-        gltfu.setup_programs(gltf)
-        gltfu.setup_textures(gltf, uri_path)
-        gltfu.setup_buffers(gltf, uri_path)
-        self.gltf = gltf
-        scene = gltf.scenes[scene_name]
-        self.nodes = [self.gltf.nodes[n] for n in scene.nodes]
-        for node in self.nodes:
-            gltfu.update_world_matrices(node, gltf)
-    def render(self, window_size=(800, 600)):
+    def render(self, gltf, nodes, window_size=(800, 600)):
         self.vr_compositor.waitGetPoses(self.poses, openvr.k_unMaxTrackedDeviceCount, None, 0)
         hmd_pose = self.poses[openvr.k_unTrackedDeviceIndex_Hmd]
         if not hmd_pose.bPoseIsValid:
@@ -60,8 +46,8 @@ class OpenVRRenderer(OpenGLRenderer):
         # mirror left eye view to screen:
         gl.glViewport(0, 0, window_size[0], window_size[1])
         gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)
-        for node in self.nodes:
-            gltfu.draw_node(node, self.gltf,
+        for node in nodes:
+            gltfu.draw_node(node, gltf,
                             projection_matrix=self.projection_matrices[0],
                             view_matrix=self.modelview_left.T)
         self.controllers.display_gl(self.modelview_left, self.projection_matrices[0])
@@ -69,8 +55,8 @@ class OpenVRRenderer(OpenGLRenderer):
         gl.glViewport(0, 0, self.vr_framebuffers[0].width, self.vr_framebuffers[0].height)
         gl.glBindFramebuffer(gl.GL_FRAMEBUFFER, self.vr_framebuffers[0].fb)
         gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)
-        for node in self.nodes:
-            gltfu.draw_node(node, self.gltf,
+        for node in nodes:
+            gltfu.draw_node(node, gltf,
                             projection_matrix=self.projection_matrices[0],
                             view_matrix=self.modelview_left.T)
         self.controllers.display_gl(self.modelview_left, self.projection_matrices[0])
@@ -78,8 +64,8 @@ class OpenVRRenderer(OpenGLRenderer):
         # draw right eye:
         gl.glBindFramebuffer(gl.GL_FRAMEBUFFER, self.vr_framebuffers[1].fb)
         gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)
-        for node in self.nodes:
-            gltfu.draw_node(node, self.gltf,
+        for node in nodes:
+            gltfu.draw_node(node, gltf,
                             projection_matrix=self.projection_matrices[1],
                             view_matrix=self.modelview_right.T)
         self.controllers.display_gl(self.modelview_right, self.projection_matrices[1])
@@ -87,7 +73,6 @@ class OpenVRRenderer(OpenGLRenderer):
 
         gl.glBindFramebuffer(gl.GL_FRAMEBUFFER, 0)
 
-
-    def __del__(self):
+    def shutdown(self):
         self.controllers.dispose_gl()
         openvr.shutdown()
