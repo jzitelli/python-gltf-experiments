@@ -43,11 +43,14 @@ def show_gltf(gltf, uri_path, scene_name=None, openvr=False):
     window = setup_glfw(width=window_size[0], height=window_size[1],
                         double_buffered=not openvr)
 
+    if openvr:
+        vr_renderer = OpenVRRenderer()
+
     def on_resize(window, width, height):
         window_size[0], window_size[1] = width, height
     glfw.SetWindowSizeCallback(window, on_resize)
 
-    gl.glClearColor(0.1, 0.2, 0.3, 1.0);
+    gl.glClearColor(0.01, 0.01, 0.17, 1.0);
 
     gltfu.setup_shaders(gltf, uri_path)
     gltfu.setup_programs(gltf)
@@ -103,9 +106,6 @@ def show_gltf(gltf, uri_path, scene_name=None, openvr=False):
 
     print('* starting render loop...')
     sys.stdout.flush()
-
-    if openvr:
-        vr_renderer = OpenVRRenderer()
     
     while not glfw.WindowShouldClose(window):
         process_input()
