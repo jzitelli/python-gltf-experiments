@@ -43,14 +43,7 @@ class OpenVRRenderer(object):
         view = np.asarray(matrixForOpenVRMatrix(hmd_pose.mDeviceToAbsoluteTracking).I)
         view.dot(self.eye_transforms[0], out=self.view_left)
         view.dot(self.eye_transforms[1], out=self.view_right)
-        # mirror left eye view to screen:
-        # gl.glViewport(0, 0, window_size[0], window_size[1])
-        # gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)
-        # for node in nodes:
-        #     gltfu.draw_node(node, gltf,
-        #                     projection_matrix=self.projection_matrices[0],
-        #                     view_matrix=self.view_left)
-        # self.controllers.display_gl(self.view_left, self.projection_matrices[0])
+
         # draw left eye:
         gl.glViewport(0, 0, self.vr_framebuffers[0].width, self.vr_framebuffers[0].height)
         gl.glBindFramebuffer(gl.GL_FRAMEBUFFER, self.vr_framebuffers[0].fb)
@@ -60,7 +53,13 @@ class OpenVRRenderer(object):
                             projection_matrix=self.projection_matrices[0],
                             view_matrix=self.view_left)
         self.controllers.display_gl(self.view_left, self.projection_matrices[0])
-        self.vr_compositor.submit(openvr.Eye_Left, self.vr_framebuffers[0].texture)
+
+        # mirror left eye framebuffer to screen:
+        gl.glBlitNamedFramebuffer(self.vr_framebuffers[0].fb, 0,
+                                  0, 0, self.vr_framebuffers[0].width, self.vr_framebuffers[0].height,
+                                  0, 0, window_size[0], window_size[1],
+                                  gl.GL_COLOR_BUFFER_BIT, gl.GL_NEAREST)
+
         # draw right eye:
         gl.glBindFramebuffer(gl.GL_FRAMEBUFFER, self.vr_framebuffers[1].fb)
         gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)
@@ -69,7 +68,11 @@ class OpenVRRenderer(object):
                             projection_matrix=self.projection_matrices[1],
                             view_matrix=self.view_right)
         self.controllers.display_gl(self.view_right, self.projection_matrices[1])
+
+        self.vr_compositor.submit(openvr.Eye_Left, self.vr_framebuffers[0].texture)
         self.vr_compositor.submit(openvr.Eye_Right, self.vr_framebuffers[1].texture)
+
+
 
         gl.glBindFramebuffer(gl.GL_FRAMEBUFFER, 0)
 

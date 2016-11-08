@@ -18,6 +18,11 @@ import pyrr
 import gltfutils as gltfu
 from JSobject import JSobject
 
+try:
+    from OpenVRRenderer import OpenVRRenderer
+except ImportError:
+    OpenVRRenderer = None
+
 
 def setup_glfw(width=800, height=600, double_buffered=False):
     if not glfw.Init():
@@ -61,7 +66,7 @@ def show_gltf(gltf, uri_path, scene_name=None, openvr=False):
     nodes = [gltf.nodes[n] for n in scene.nodes]
 
     world_matrix = np.eye(4, 4)
-    
+
     for node in nodes:
         gltfu.update_world_matrices(node, gltf)
 
@@ -122,31 +127,35 @@ def show_gltf(gltf, uri_path, scene_name=None, openvr=False):
         if not stats_printed:
             print("num draw calls: %d" % gltfu.num_draw_calls)
             sys.stdout.flush()
-            stats_printed = True      
+            stats_printed = True
         glfw.SwapBuffers(window)
 
     if openvr:
-        vr_renderer.shutdown()        
+        vr_renderer.shutdown()
     glfw.DestroyWindow(window)
     glfw.Terminate()
 
 
-if __name__ == "__main__":
+def main():    
     parser = argparse.ArgumentParser()
     parser.add_argument('filename', help='path of glTF file to view')
     parser.add_argument("--openvr", help="view in VR (using OpenVR viewer)",
                         action="store_true")
     args = parser.parse_args()
 
-    if args.openvr:
-        from OpenVRRenderer import OpenVRRenderer
+    if args.openvr and OpenVRRenderer is None:
+        raise Exception('error importing OpenVRRenderer')
 
-    uri_path = os.path.dirname(args.filename)
     try:
         gltf = json.loads(open(args.filename).read())
         print('* loaded "%s"' % args.filename)
     except Exception as err:
         raise Exception('failed to load %s:\n%s' % (args.filename, err))
-    gltf = JSobject(gltf)
 
+    gltf = JSobject(gltf)
+    uri_path = os.path.dirname(args.filename)
     show_gltf(gltf, uri_path, openvr=args.openvr)
+
+
+if __name__ == "__main__":
+    main()
