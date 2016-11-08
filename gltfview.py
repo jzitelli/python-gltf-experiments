@@ -124,9 +124,8 @@ def view_gltf(gltf, uri_path, scene_name=None, openvr=False, window_size=None):
 
     print('* starting render loop...')
     sys.stdout.flush()
-    stats_printed = False
+    nframes = 0
     lt = glfw.GetTime()
-
     while not glfw.WindowShouldClose(window):
         t = glfw.GetTime()
         dt = t - lt
@@ -143,12 +142,14 @@ def view_gltf(gltf, uri_path, scene_name=None, openvr=False, window_size=None):
                 gltfu.draw_node(node, gltf,
                                 projection_matrix=projection_matrix,
                                 view_matrix=view_matrix)
-        glfw.SwapBuffers(window)
-        if not stats_printed:
+        if nframes == 0:
             print("* num draw calls per frame: %d" % gltfu.num_draw_calls)
             sys.stdout.flush()
             gltfu.num_draw_calls = 0
-            stats_printed = True
+            st = glfw.GetTime()
+        nframes += 1
+        glfw.SwapBuffers(window)
+    print('* FPS (avg): %f' % ((nframes - 1) / (t - st)))
 
     if openvr:
         vr_renderer.shutdown()
