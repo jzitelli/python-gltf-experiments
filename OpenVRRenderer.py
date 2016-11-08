@@ -36,7 +36,6 @@ class OpenVRRenderer(object):
         self.controllers.show_controllers_only = False
         self.controllers.init_gl()
         self.vr_event = openvr.VREvent_t()
-        self.button_down = False
         
     def render(self, gltf, nodes, window_size=(800, 600)):
         self.vr_compositor.waitGetPoses(self.poses, openvr.k_unMaxTrackedDeviceCount, None, 0)
@@ -78,15 +77,14 @@ class OpenVRRenderer(object):
         gl.glBindFramebuffer(gl.GL_FRAMEBUFFER, 0)
 
     def process_input(self):
+        got_state, state = self.vr_system.getControllerState(1)
+        if got_state and state.rAxis[1].x > 0.05:
+            self.vr_system.triggerHapticPulse(1, 0, int(3200 * state.rAxis[1].x))
         if self.vr_system.pollNextEvent(self.vr_event):
             if self.vr_event.eventType == openvr.VREvent_ButtonPress:
-                self.button_down = True
+                print('vr controller button pressed')
             elif self.vr_event.eventType == openvr.VREvent_ButtonUnpress:
-                self.button_down = False
-        if True: #self.button_down:
-            got_state, state = self.vr_system.getControllerState(1)
-            if got_state and state.rAxis[1].x > 0:
-                self.vr_system.triggerHapticPulse(1, 0, int(2000 * state.rAxis[1].x))
+                print('vr controller button unpressed')
             
     def shutdown(self):
         self.controllers.dispose_gl()
