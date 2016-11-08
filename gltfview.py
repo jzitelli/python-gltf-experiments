@@ -133,8 +133,8 @@ def view_gltf(gltf, uri_path, scene_name=None, openvr=False, window_size=None):
         lt = t
         process_input(dt)
         if openvr:
-            vr_renderer.render(gltf, nodes, window_size)
             vr_renderer.process_input()
+            vr_renderer.render(gltf, nodes, window_size)
         else:
             gl.glViewport(0, 0, window_size[0], window_size[1])
             gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)
@@ -143,12 +143,12 @@ def view_gltf(gltf, uri_path, scene_name=None, openvr=False, window_size=None):
                 gltfu.draw_node(node, gltf,
                                 projection_matrix=projection_matrix,
                                 view_matrix=view_matrix)
+        glfw.SwapBuffers(window)
         if not stats_printed:
-            print("num draw calls per frame: %d" % gltfu.num_draw_calls)
+            print("* num draw calls per frame: %d" % gltfu.num_draw_calls)
             sys.stdout.flush()
             gltfu.num_draw_calls = 0
             stats_printed = True
-        glfw.SwapBuffers(window)
 
     if openvr:
         vr_renderer.shutdown()
@@ -159,8 +159,7 @@ def view_gltf(gltf, uri_path, scene_name=None, openvr=False, window_size=None):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('filename', help='path of glTF file to view')
-    parser.add_argument("--openvr", help="view in VR (using OpenVR viewer)",
-                        action="store_true")
+    parser.add_argument("--openvr", help="view in VR", action="store_true")
     args = parser.parse_args()
 
     if args.openvr and OpenVRRenderer is None:
