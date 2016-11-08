@@ -2,6 +2,7 @@ import sys
 import os.path
 import json
 import argparse
+import functools
 
 import numpy as np
 
@@ -13,11 +14,11 @@ import OpenGL.GL as gl
 
 import cyglfw3 as glfw
 
-import pyrr
+from pyrr import matrix44
+
 
 import gltfutils as gltfu
 from JSobject import JSobject
-
 try:
     from OpenVRRenderer import OpenVRRenderer
 except ImportError:
@@ -39,16 +40,16 @@ def setup_glfw(width=800, height=600, double_buffered=False):
     return window
 
 
-def show_gltf(gltf, uri_path, scene_name=None, openvr=False):
+def view_gltf(gltf, uri_path, scene_name=None, openvr=False, window_size=None):
     if scene_name is None:
         scene_name = gltf['scene']
-
-    window_size = [800, 600]
+    if window_size is None:
+        window_size = [800, 600]
 
     window = setup_glfw(width=window_size[0], height=window_size[1],
                         double_buffered=not openvr)
 
-    if openvr:
+    if openvr and OpenVRRenderer is not None:
         vr_renderer = OpenVRRenderer()
 
     def on_resize(window, width, height):
@@ -65,29 +66,33 @@ def show_gltf(gltf, uri_path, scene_name=None, openvr=False):
     scene = gltf.scenes[scene_name]
     nodes = [gltf.nodes[n] for n in scene.nodes]
 
-    world_matrix = np.eye(4, 4)
-
     for node in nodes:
         gltfu.update_world_matrices(node, gltf)
 
+    camera_world_matrix = np.eye(4, 4, dtype=np.float32)
+    view_matrix = np.linalg.inv(camera_world_matrix)
+    projection_matrix = np.array(matrix44.create_perspective_projection_matrix(np.rad2deg(55), window_size[0]/window_size[1], 0.1, 1000),
+                                 dtype=np.float32)
     for node in nodes:
         if 'camera' in node:
             camera = gltf['cameras'][node['camera']]
             if 'perspective' in camera:
                 perspective = camera['perspective']
-                projection_matrix = pyrr.matrix44.create_perspective_projection_matrix(np.rad2deg(perspective['yfov']), perspective['aspectRatio'],
-                                                                                       perspective['znear'], perspective['zfar'])
+                projection_matrix = np.array(matrix44.create_perspective_projection_matrix(np.rad2deg(perspective['yfov']), perspective['aspectRatio'],
+                                                                                           perspective['znear'], perspective['zfar']),
+                                             dtype=np.float32)
             elif 'orthographic' in camera:
                 raise Exception('TODO')
-            world_matrix = node['world_matrix']
+            camera_world_matrix = node['world_matrix']
             break
 
     key_state = {glfw.KEY_W: False,
                  glfw.KEY_S: False,
                  glfw.KEY_A: False,
-                 glfw.KEY_D: False}
+                 glfw.KEY_D: False,
+                 glfw.KEY_Q: False,
+                 glfw.KEY_Z: False}
     def on_keydown(window, key, scancode, action, mods):
-        # press ESC to quit:
         if key == glfw.KEY_ESCAPE and action == glfw.PRESS:
             glfw.SetWindowShouldClose(window, gl.GL_TRUE)
         elif action == glfw.PRESS:
@@ -96,38 +101,52 @@ def show_gltf(gltf, uri_path, scene_name=None, openvr=False):
             key_state[key] = False
     glfw.SetKeyCallback(window, on_keydown)
 
-    move_speed = 0.002
+    def on_mousedown(window, button, action, mods):
+        pass
+    glfw.SetMouseButtonCallback(window, on_mousedown)
 
-    def process_input():
+    move_speed = 0.3
+
+    def process_input(dt):
         glfw.PollEvents()
         if key_state[glfw.KEY_W]:
-            world_matrix[2,3] += move_speed
+            camera_world_matrix[3,2] += dt * move_speed
         if key_state[glfw.KEY_S]:
-            world_matrix[2,3] -= move_speed
+            camera_world_matrix[3,2] -= dt * move_speed
         if key_state[glfw.KEY_A]:
-            world_matrix[0,3] += move_speed
+            camera_world_matrix[3,0] += dt * move_speed
         if key_state[glfw.KEY_D]:
-            world_matrix[0,3] -= move_speed
+            camera_world_matrix[3,0] -= dt * move_speed
+        if key_state[glfw.KEY_Q]:
+            camera_world_matrix[3,1] += dt * move_speed
+        if key_state[glfw.KEY_Z]:
+            camera_world_matrix[3,1] -= dt * move_speed
 
     print('* starting render loop...')
     sys.stdout.flush()
-
     stats_printed = False
+    lt = glfw.GetTime()
+
     while not glfw.WindowShouldClose(window):
-        process_input()
+        t = glfw.GetTime()
+        dt = t - lt
+        lt = t
+        process_input(dt)
         if openvr:
             vr_renderer.render(gltf, nodes, window_size)
             vr_renderer.process_input()
         else:
             gl.glViewport(0, 0, window_size[0], window_size[1])
             gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)
+            view_matrix = np.linalg.inv(camera_world_matrix)
             for node in nodes:
                 gltfu.draw_node(node, gltf,
                                 projection_matrix=projection_matrix,
-                                view_matrix=np.linalg.inv(world_matrix))
+                                view_matrix=view_matrix)
         if not stats_printed:
-            print("num draw calls: %d" % gltfu.num_draw_calls)
+            print("num draw calls per frame: %d" % gltfu.num_draw_calls)
             sys.stdout.flush()
+            gltfu.num_draw_calls = 0
             stats_printed = True
         glfw.SwapBuffers(window)
 
@@ -137,7 +156,7 @@ def show_gltf(gltf, uri_path, scene_name=None, openvr=False):
     glfw.Terminate()
 
 
-def main():    
+def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('filename', help='path of glTF file to view')
     parser.add_argument("--openvr", help="view in VR (using OpenVR viewer)",
@@ -155,7 +174,9 @@ def main():
 
     gltf = JSobject(gltf)
     uri_path = os.path.dirname(args.filename)
-    show_gltf(gltf, uri_path, openvr=args.openvr)
+    view_gltf(gltf, uri_path, openvr=args.openvr)
+    global view
+    view = functools.partial(view_gltf, gltf, uri_path, openvr=args.openvr)
 
 
 if __name__ == "__main__":
