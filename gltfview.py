@@ -105,7 +105,7 @@ def view_gltf(gltf, uri_path, scene_name=None, openvr=False, window_size=None):
         pass
     glfw.SetMouseButtonCallback(window, on_mousedown)
 
-    move_speed = 0.3
+    move_speed = 2
 
     def process_input(dt):
         glfw.PollEvents()

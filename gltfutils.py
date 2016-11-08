@@ -3,11 +3,6 @@ import base64
 from ctypes import c_void_p
 import functools
 
-try: # python 3.3 or later
-    from types import MappingProxyType
-except ImportError as err:
-    MappingProxyType = dict
-
 import numpy as np
 
 import OpenGL.GL as gl
@@ -15,6 +10,9 @@ import OpenGL.GL as gl
 import PIL.Image as Image
 
 from pyrr import matrix44
+
+
+from ImmutableDict import MappingProxyType, ImmutableDict
 
 
 GLTF_BUFFERVIEW_TYPE_SIZES = MappingProxyType({
@@ -29,6 +27,7 @@ GLTF_BUFFERVIEW_TYPE_SIZES = MappingProxyType({
 
 
 def setup_shaders(gltf, uri_path):
+    """Loads and compiles all shaders defined or referenced in the given gltf."""
     for shader_name, shader in gltf['shaders'].items():
         uri = shader['uri']
         if uri.startswith('data:text/plain;base64,'):
@@ -135,7 +134,7 @@ def set_material_state(material, semantic_attributes, gltf):
     textures = gltf.get('textures', {})
     samplers = gltf.get('samplers', {})
     gl.glUseProgram(program['id'])
-    set_material_state.enabled_states = technique.get('states', {}).get('enable', set_material_state.enabled_states)
+    set_material_state.enabled_states = technique.get('states', {}).get('enable', [])
     for state in set_material_state.enabled_states:
         gl.glEnable(state)
     material_values = material.get('values', {})
@@ -164,6 +163,7 @@ def set_material_state(material, semantic_attributes, gltf):
                 raise Exception('unhandled parameter type: %s' % parameter['type'])
         else:
             raise Exception('no value provided for parameter "%s"' % parameter_name)
+    set_material_state.enabled_locations = []
     for attribute_name, parameter_name in technique['attributes'].items():
         parameter = technique['parameters'][parameter_name]
         if 'semantic' in parameter:
@@ -180,8 +180,8 @@ def set_material_state(material, semantic_attributes, gltf):
                 set_material_state.enabled_locations.append(location)
         else:
             raise Exception('expected a semantic property for attribute "%s"' % attribute_name)
-set_material_state.enabled_locations = []
 set_material_state.enabled_states = []
+set_material_state.enabled_locations = []
 
 
 def end_material_state():
@@ -192,7 +192,7 @@ def end_material_state():
         gl.glDisable(state)
     set_material_state.enabled_states = []
 
-    
+
 def set_draw_state(primitive, gltf,
                    modelview_matrix=None,
                    projection_matrix=None,
@@ -204,6 +204,7 @@ def set_draw_state(primitive, gltf,
     accessors = gltf['accessors']
     bufferViews = gltf['bufferViews']
     set_material_state(material, primitive['attributes'], gltf)
+    #set_material_state_lazy(ImmutableDict(material), ImmutableDict(primitive['attributes']), ImmutableDict(gltf))
     for uniform_name, parameter_name in technique['uniforms'].items():
         parameter = technique['parameters'][parameter_name]
         if 'semantic' in parameter:
