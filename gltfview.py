@@ -117,6 +117,7 @@ def show_gltf(gltf, uri_path, scene_name=None, openvr=False):
         process_input()
         if openvr:
             vr_renderer.render(gltf, nodes, window_size)
+            vr_renderer.process_input()
         else:
             gl.glViewport(0, 0, window_size[0], window_size[1])
             gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)

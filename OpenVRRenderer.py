@@ -1,3 +1,5 @@
+from ctypes import sizeof
+
 import numpy as np
 
 import OpenGL.GL as gl
@@ -35,6 +37,9 @@ class OpenVRRenderer(object):
         self.controllers = TrackedDevicesActor(self.poses)
         self.controllers.show_controllers_only = False
         self.controllers.init_gl()
+        self.vr_event = openvr.VREvent_t()
+        self.button_down = False
+        
     def render(self, gltf, nodes, window_size=(800, 600)):
         self.vr_compositor.waitGetPoses(self.poses, openvr.k_unMaxTrackedDeviceCount, None, 0)
         hmd_pose = self.poses[openvr.k_unTrackedDeviceIndex_Hmd]
@@ -54,12 +59,6 @@ class OpenVRRenderer(object):
                             view_matrix=self.view_left)
         self.controllers.display_gl(self.view_left, self.projection_matrices[0])
 
-        # mirror left eye framebuffer to screen:
-        gl.glBlitNamedFramebuffer(self.vr_framebuffers[0].fb, 0,
-                                  0, 0, self.vr_framebuffers[0].width, self.vr_framebuffers[0].height,
-                                  0, 0, window_size[0], window_size[1],
-                                  gl.GL_COLOR_BUFFER_BIT, gl.GL_NEAREST)
-
         # draw right eye:
         gl.glBindFramebuffer(gl.GL_FRAMEBUFFER, self.vr_framebuffers[1].fb)
         gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)
@@ -68,14 +67,29 @@ class OpenVRRenderer(object):
                             projection_matrix=self.projection_matrices[1],
                             view_matrix=self.view_right)
         self.controllers.display_gl(self.view_right, self.projection_matrices[1])
-
+        
         self.vr_compositor.submit(openvr.Eye_Left, self.vr_framebuffers[0].texture)
         self.vr_compositor.submit(openvr.Eye_Right, self.vr_framebuffers[1].texture)
 
-
+        # mirror left eye framebuffer to screen:
+        gl.glBlitNamedFramebuffer(self.vr_framebuffers[0].fb, 0,
+                                  0, 0, self.vr_framebuffers[0].width, self.vr_framebuffers[0].height,
+                                  0, 0, window_size[0], window_size[1],
+                                  gl.GL_COLOR_BUFFER_BIT, gl.GL_NEAREST)
 
         gl.glBindFramebuffer(gl.GL_FRAMEBUFFER, 0)
 
+    def process_input(self):
+        if self.vr_system.pollNextEvent(self.vr_event):
+            if self.vr_event.eventType == openvr.VREvent_ButtonPress:
+                self.button_down = True
+            elif self.vr_event.eventType == openvr.VREvent_ButtonUnpress:
+                self.button_down = False
+        if True: #self.button_down:
+            got_state, state = self.vr_system.getControllerState(1)
+            if got_state and state.rAxis[1].x > 0:
+                self.vr_system.triggerHapticPulse(1, 0, int(2000 * state.rAxis[1].x))
+            
     def shutdown(self):
         self.controllers.dispose_gl()
         openvr.shutdown()
