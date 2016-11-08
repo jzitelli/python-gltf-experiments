@@ -1,7 +1,10 @@
 import os.path
 import base64
 from ctypes import c_void_p
-import functools
+try: # python 3.3 or later
+    from types import MappingProxyType
+except ImportError as err:
+    MappingProxyType = dict
 
 import numpy as np
 
@@ -10,9 +13,6 @@ import OpenGL.GL as gl
 import PIL.Image as Image
 
 from pyrr import matrix44
-
-
-from ImmutableDict import MappingProxyType, ImmutableDict
 
 
 GLTF_BUFFERVIEW_TYPE_SIZES = MappingProxyType({
