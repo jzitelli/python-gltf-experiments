@@ -166,16 +166,17 @@ def main():
     if args.openvr and OpenVRRenderer is None:
         raise Exception('error importing OpenVRRenderer')
 
+    global gltf
     try:
         gltf = json.loads(open(args.filename).read())
         print('* loaded "%s"' % args.filename)
     except Exception as err:
         raise Exception('failed to load %s:\n%s' % (args.filename, err))
-
-    global gltf
     gltf = JSobject(gltf)
     uri_path = os.path.dirname(args.filename)
+
     view_gltf(gltf, uri_path, openvr=args.openvr)
+
     global view
     view = functools.partial(view_gltf, gltf, uri_path, openvr=args.openvr)
 

@@ -229,21 +229,21 @@ def set_draw_state(primitive, gltf,
         if 'semantic' in parameter:
             location = gl.glGetUniformLocation(program['id'], uniform_name)
             if parameter['semantic'] == 'MODELVIEW':
-                if 'node' in parameter:
+                if 'node' in parameter and view_matrix is not None:
                     world_matrix = gltf['nodes'][parameter['node']]['world_matrix']
                     world_matrix.dot(view_matrix, out=set_draw_state.modelview_matrix)
                     gl.glUniformMatrix4fv(location, 1, False, set_draw_state.modelview_matrix)
-                else:
+                elif modelview_matrix is not None:
                     gl.glUniformMatrix4fv(location, 1, False, modelview_matrix)
             elif parameter['semantic'] == 'PROJECTION':
                 if 'node' in parameter:
                     raise Exception('TODO')
-                else:
+                elif projection_matrix is not None:
                     gl.glUniformMatrix4fv(location, 1, False, projection_matrix)
             elif parameter['semantic'] == 'MODELVIEWINVERSETRANSPOSE':
                 if 'node' in parameter:
                     raise Exception('TODO')
-                else:
+                elif normal_matrix is not None:
                     gl.glUniformMatrix3fv(location, 1, True, normal_matrix)
             else:
                 raise Exception('unhandled semantic: %s' % parameter['semantic'])
@@ -284,12 +284,12 @@ def draw_mesh(mesh, gltf,
               projection_matrix=None,
               view_matrix=None,
               normal_matrix=None):
-    for primitive in mesh['primitives']:
+    for i, primitive in enumerate(mesh['primitives']):
         draw_primitive(primitive, gltf,
-                       modelview_matrix=modelview_matrix,
-                       projection_matrix=projection_matrix,
-                       view_matrix=view_matrix,
-                       normal_matrix=normal_matrix)
+                       modelview_matrix=(modelview_matrix if i == 0 else None),
+                       projection_matrix=(projection_matrix if i == 0 else None),
+                       view_matrix=(view_matrix if i == 0 else None),
+                       normal_matrix=(normal_matrix if i == 0 else None))
 
 
 def draw_node(node, gltf,
