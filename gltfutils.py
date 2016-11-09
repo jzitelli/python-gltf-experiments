@@ -135,7 +135,7 @@ def set_material_state(material, gltf):
     textures = gltf.get('textures', {})
     samplers = gltf.get('samplers', {})
     enabled_states = technique.get('states', {}).get('enable', [])
-    for state, is_enabled in set_material_state.technique_states.items():
+    for state, is_enabled in list(set_material_state.technique_states.items()):
         if state in enabled_states:
             if not is_enabled:
                 gl.glEnable(state)
@@ -148,10 +148,11 @@ def set_material_state(material, gltf):
             gl.glEnable(state)
             set_material_state.technique_states[state] = True
     material_values = material.get('values', {})
-    current_program_id = getattr(set_material_state, 'program_id', None)
-    if current_program_id is None or current_program_id != program['id']:
-        set_material_state.program_id = program['id']
-        gl.glUseProgram(program['id'])
+    # current_program_id = getattr(set_material_state, 'program_id', None)
+    # if current_program_id is None or current_program_id != program['id']:
+    #     set_material_state.program_id = program['id']
+    #     gl.glUseProgram(program['id'])
+    gl.glUseProgram(program['id'])
     for uniform_name, parameter_name in technique['uniforms'].items():
         parameter = technique['parameters'][parameter_name]
         if 'semantic' in parameter:
