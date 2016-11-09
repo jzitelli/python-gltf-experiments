@@ -15,6 +15,8 @@ import PIL.Image as Image
 from pyrr import matrix44
 
 
+CHECK_GL_ERRORS = False
+
 GLTF_BUFFERVIEW_TYPE_SIZES = MappingProxyType({
     'SCALAR': 1,
     'VEC2': 2,
@@ -60,6 +62,7 @@ def setup_programs(gltf):
         program['id'] = program_id
         program['attribute_locations'] = {attribute_name: gl.glGetAttribLocation(program_id, attribute_name)
                                           for attribute_name in program['attributes']}
+        program['uniform_locations'] = {}
         print('* linked program "%s"' % program_name)
         print('  attribute locations: %s' % program['attribute_locations'])
 
@@ -126,25 +129,40 @@ def setup_buffers(gltf, uri_path):
         print('* created buffer "%s"' % bufferView_name)
 
 
-def set_material_state(material, semantic_attributes, gltf):
+def set_material_state(material, gltf):
     technique = gltf['techniques'][material['technique']]
     program = gltf['programs'][technique['program']]
-    accessors = gltf['accessors']
-    bufferViews = gltf['bufferViews']
     textures = gltf.get('textures', {})
     samplers = gltf.get('samplers', {})
-    gl.glUseProgram(program['id'])
-    set_material_state.enabled_states = technique.get('states', {}).get('enable', [])
-    for state in set_material_state.enabled_states:
-        gl.glEnable(state)
+    enabled_states = technique.get('states', {}).get('enable', [])
+    for state, is_enabled in set_material_state.technique_states.items():
+        if state in enabled_states:
+            if not is_enabled:
+                gl.glEnable(state)
+                set_material_state.technique_states[state] = True
+        elif is_enabled:
+            gl.glDisable(state)
+            set_material_state.technique_states[state] = False
+    for state in enabled_states:
+        if state not in set_material_state.technique_states:
+            gl.glEnable(state)
+            set_material_state.technique_states[state] = True
     material_values = material.get('values', {})
+    current_program_id = getattr(set_material_state, 'program_id', None)
+    if current_program_id is None or current_program_id != program['id']:
+        set_material_state.program_id = program['id']
+        gl.glUseProgram(program['id'])
     for uniform_name, parameter_name in technique['uniforms'].items():
         parameter = technique['parameters'][parameter_name]
         if 'semantic' in parameter:
             continue
         value = material_values.get(parameter_name, parameter.get('value'))
         if value:
-            location = gl.glGetUniformLocation(program['id'], uniform_name)
+            if uniform_name in program['uniform_locations']:
+                location = program['uniform_locations'][uniform_name]
+            else:
+                location = gl.glGetUniformLocation(program['id'], uniform_name)
+                program['uniform_locations'][uniform_name] = location
             if parameter['type'] == gl.GL_SAMPLER_2D:
                 texture = textures[value]
                 gl.glActiveTexture(gl.GL_TEXTURE0+0)
@@ -163,13 +181,38 @@ def set_material_state(material, semantic_attributes, gltf):
                 raise Exception('unhandled parameter type: %s' % parameter['type'])
         else:
             raise Exception('no value provided for parameter "%s"' % parameter_name)
+    if CHECK_GL_ERRORS:
+        if gl.glGetError() != gl.GL_NO_ERROR:
+            raise Exception('error setting material state')
+set_material_state.technique_states = {}
+set_material_state.enabled_locations = []
+
+
+def end_material_state():
+    for loc in set_material_state.enabled_locations:
+        gl.glDisableVertexAttribArray(loc)
+    set_material_state.enabled_locations = []
+
+
+def set_draw_state(primitive, gltf,
+                   modelview_matrix=None,
+                   projection_matrix=None,
+                   view_matrix=None,
+                   normal_matrix=None):
+    material = gltf['materials'][primitive['material']]
+    set_material_state(material, gltf)
+    technique = gltf['techniques'][material['technique']]
+    program = gltf['programs'][technique['program']]
+    accessors = gltf['accessors']
+    bufferViews = gltf['bufferViews']
+    accessor_names = primitive['attributes']
     set_material_state.enabled_locations = []
     for attribute_name, parameter_name in technique['attributes'].items():
         parameter = technique['parameters'][parameter_name]
         if 'semantic' in parameter:
             semantic = parameter['semantic']
-            if semantic in semantic_attributes:
-                accessor = accessors[semantic_attributes[semantic]]
+            if semantic in accessor_names:
+                accessor = accessors[accessor_names[semantic]]
                 bufferView = bufferViews[accessor['bufferView']]
                 buffer_id = bufferView['id']
                 location = program['attribute_locations'][attribute_name]
@@ -180,31 +223,6 @@ def set_material_state(material, semantic_attributes, gltf):
                 set_material_state.enabled_locations.append(location)
         else:
             raise Exception('expected a semantic property for attribute "%s"' % attribute_name)
-set_material_state.enabled_states = []
-set_material_state.enabled_locations = []
-
-
-def end_material_state():
-    for loc in set_material_state.enabled_locations:
-        gl.glDisableVertexAttribArray(loc)
-    set_material_state.enabled_locations = []
-    for state in set_material_state.enabled_states:
-        gl.glDisable(state)
-    set_material_state.enabled_states = []
-
-
-def set_draw_state(primitive, gltf,
-                   modelview_matrix=None,
-                   projection_matrix=None,
-                   view_matrix=None,
-                   normal_matrix=None):
-    material = gltf['materials'][primitive['material']]
-    technique = gltf['techniques'][material['technique']]
-    program = gltf['programs'][technique['program']]
-    accessors = gltf['accessors']
-    bufferViews = gltf['bufferViews']
-    set_material_state(material, primitive['attributes'], gltf)
-    #set_material_state_lazy(ImmutableDict(material), ImmutableDict(primitive['attributes']), ImmutableDict(gltf))
     for uniform_name, parameter_name in technique['uniforms'].items():
         parameter = technique['parameters'][parameter_name]
         if 'semantic' in parameter:
@@ -228,6 +246,9 @@ def set_draw_state(primitive, gltf,
                     gl.glUniformMatrix3fv(location, 1, True, normal_matrix)
             else:
                 raise Exception('unhandled semantic: %s' % parameter['semantic'])
+    if CHECK_GL_ERRORS:
+        if gl.glGetError() != gl.GL_NO_ERROR:
+            raise Exception('error setting draw state')
 set_draw_state.modelview_matrix = np.empty((4,4), dtype=np.float32)
 
 
@@ -250,8 +271,9 @@ def draw_primitive(primitive, gltf,
                       c_void_p(index_accessor['byteOffset']))
     global num_draw_calls
     num_draw_calls += 1
-    # if gl.glGetError() != gl.GL_NO_ERROR:
-    #     raise Exception('error drawing elements')
+    if CHECK_GL_ERRORS:
+        if gl.glGetError() != gl.GL_NO_ERROR:
+            raise Exception('error drawing elements')
     end_material_state()
 num_draw_calls = 0
 

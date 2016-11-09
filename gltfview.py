@@ -172,6 +172,7 @@ def main():
     except Exception as err:
         raise Exception('failed to load %s:\n%s' % (args.filename, err))
 
+    global gltf
     gltf = JSobject(gltf)
     uri_path = os.path.dirname(args.filename)
     view_gltf(gltf, uri_path, openvr=args.openvr)
