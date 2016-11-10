@@ -83,6 +83,9 @@ class OpenVRRenderer(object):
         got_state, state = self.vr_system.getControllerState(1)
         if got_state and state.rAxis[1].x > 0.05:
             self.vr_system.triggerHapticPulse(1, 0, int(3200 * state.rAxis[1].x))
+        got_state, state = self.vr_system.getControllerState(2)
+        if got_state and state.rAxis[1].x > 0.05:
+            self.vr_system.triggerHapticPulse(2, 0, int(3200 * state.rAxis[1].x))
         if self.vr_system.pollNextEvent(self.vr_event):
             if self.vr_event.eventType == openvr.VREvent_ButtonPress:
                 print('vr controller button pressed')
