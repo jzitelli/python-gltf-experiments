@@ -18,6 +18,7 @@ from pyrr import matrix44
 
 
 import gltfutils as gltfu
+from gltfdefault import DEFAULT_GLTF
 from JSobject import JSobject
 try:
     from OpenVRRenderer import OpenVRRenderer
@@ -172,6 +173,10 @@ def main():
         print('* loaded "%s"' % args.filename)
     except Exception as err:
         raise Exception('failed to load %s:\n%s' % (args.filename, err))
+
+    # for prop in DEFAULT_GLTF.keys():
+    #     gltf[prop].update(DEFAULT_GLTF[prop])
+
     gltf = JSobject(gltf)
     uri_path = os.path.dirname(args.filename)
 

@@ -46,10 +46,12 @@ class OpenVRRenderer(object):
         view.dot(self.eye_transforms[0], out=self.view_left)
         view.dot(self.eye_transforms[1], out=self.view_right)
 
+
         # draw left eye:
         gl.glViewport(0, 0, self.vr_framebuffers[0].width, self.vr_framebuffers[0].height)
         gl.glBindFramebuffer(gl.GL_FRAMEBUFFER, self.vr_framebuffers[0].fb)
         gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)
+        gltfu.set_technique_state.current_technique = None
         for node in nodes:
             gltfu.draw_node(node, gltf,
                             projection_matrix=self.projection_matrices[0],
@@ -59,6 +61,7 @@ class OpenVRRenderer(object):
         # draw right eye:
         gl.glBindFramebuffer(gl.GL_FRAMEBUFFER, self.vr_framebuffers[1].fb)
         gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)
+        gltfu.set_technique_state.current_technique = None
         for node in nodes:
             gltfu.draw_node(node, gltf,
                             projection_matrix=self.projection_matrices[1],
