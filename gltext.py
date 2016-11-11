@@ -1,6 +1,7 @@
 import os.path
 
 import OpenGL.GL as gl
+import numpy as np
 import PIL.Image as Image
 
 
@@ -50,5 +51,30 @@ class TextDrawer(object):
         gl.glDetachShader(program_id, fs_id)
         if not gl.glGetProgramiv(program_id, gl.GL_LINK_STATUS):
             raise Exception('failed to link gltext program')
+        texture_id = gl.glGenTextures(1)
+        gl.glBindTexture(gl.GL_TEXTURE_2D, texture_id)
+        sampler_id = gl.glGenSamplers(1)
+        gl.glSamplerParameteri(sampler_id, gl.GL_TEXTURE_MIN_FILTER, 9986)
+        gl.glSamplerParameteri(sampler_id, gl.GL_TEXTURE_MAG_FILTER, 9729)
+        gl.glSamplerParameteri(sampler_id, gl.GL_TEXTURE_WRAP_S, 10497)
+        gl.glSamplerParameteri(sampler_id, gl.GL_TEXTURE_WRAP_T, 10497)
+        gl.glPixelStorei(gl.GL_UNPACK_ALIGNMENT, 1)
+        gl.glTexImage2D(gl.GL_TEXTURE_2D, 0,
+                        6408, # gl.GL_RGBA
+                        image.width, image.height, 0,
+                        gl.GL_RGBA,
+                        gl.GL_UNSIGNED_BYTE,
+                        np.array(list(image.getdata()), dtype=np.ubyte))
+        gl.glGenerateMipmap(gl.GL_TEXTURE_2D)
+        if gl.glGetError() != gl.GL_NO_ERROR:
+            raise Exception('failed to create font texture')
+        self._program_id = program_id
+        self._attribute_locations = {attribute: gl.glGetAttribLocation(program_id, attribute)
+                                     for attribute in ['a_position', 'a_texcoord0']}
+        self._uniform_locations = {uniform: gl.glGetUniformLocation(program_id, uniform)
+                                   for uniform in ['u_modelviewMatrix', 'u_projectionMatrix', 'u_fonttex', 'u_color']}
+        self._texture_id = texture_id
+        self._sampler_id = sampler_id
+        
     def draw_text(self, text, position=(0,0), scale=1, color=(1.0, 1.0, 1.0, 1.0)):
         pass
