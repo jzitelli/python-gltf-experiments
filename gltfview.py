@@ -66,7 +66,7 @@ def view_gltf(gltf, uri_path, scene_name=None, openvr=False, window_size=None):
     gltfu.setup_programs(gltf, shader_ids)
     gltfu.setup_textures(gltf, uri_path)
     gltfu.setup_buffers(gltf, uri_path)
-    
+
     scene = gltf.scenes[scene_name]
     nodes = [gltf.nodes[n] for n in scene.nodes]
 
@@ -110,7 +110,7 @@ def view_gltf(gltf, uri_path, scene_name=None, openvr=False, window_size=None):
         pass
     glfw.SetMouseButtonCallback(window, on_mousedown)
 
-    move_speed = 2
+    move_speed = 2.0
 
     def process_input(dt):
         glfw.PollEvents()
