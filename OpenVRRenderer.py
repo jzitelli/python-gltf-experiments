@@ -36,7 +36,7 @@ class OpenVRRenderer(object):
         self.controllers.show_controllers_only = False
         self.controllers.init_gl()
         self.vr_event = openvr.VREvent_t()
-        
+
     def render(self, gltf, nodes, window_size=(800, 600)):
         self.vr_compositor.waitGetPoses(self.poses, openvr.k_unMaxTrackedDeviceCount, None, 0)
         hmd_pose = self.poses[openvr.k_unTrackedDeviceIndex_Hmd]
@@ -46,11 +46,11 @@ class OpenVRRenderer(object):
         view.dot(self.eye_transforms[0], out=self.view_left)
         view.dot(self.eye_transforms[1], out=self.view_right)
 
-
         # draw left eye:
         gl.glViewport(0, 0, self.vr_framebuffers[0].width, self.vr_framebuffers[0].height)
         gl.glBindFramebuffer(gl.GL_FRAMEBUFFER, self.vr_framebuffers[0].fb)
         gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)
+        gltfu.set_material_state.current_material = None
         gltfu.set_technique_state.current_technique = None
         for node in nodes:
             gltfu.draw_node(node, gltf,
@@ -61,13 +61,14 @@ class OpenVRRenderer(object):
         # draw right eye:
         gl.glBindFramebuffer(gl.GL_FRAMEBUFFER, self.vr_framebuffers[1].fb)
         gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)
+        gltfu.set_material_state.current_material = None
         gltfu.set_technique_state.current_technique = None
         for node in nodes:
             gltfu.draw_node(node, gltf,
                             projection_matrix=self.projection_matrices[1],
                             view_matrix=self.view_right)
         self.controllers.display_gl(self.view_right, self.projection_matrices[1])
-        
+
         self.vr_compositor.submit(openvr.Eye_Left, self.vr_framebuffers[0].texture)
         self.vr_compositor.submit(openvr.Eye_Right, self.vr_framebuffers[1].texture)
 
@@ -91,7 +92,7 @@ class OpenVRRenderer(object):
                 print('vr controller button pressed')
             elif self.vr_event.eventType == openvr.VREvent_ButtonUnpress:
                 print('vr controller button unpressed')
-            
+
     def shutdown(self):
         self.controllers.dispose_gl()
         openvr.shutdown()

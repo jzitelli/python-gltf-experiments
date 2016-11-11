@@ -27,6 +27,7 @@ GLTF_BUFFERVIEW_TYPE_SIZES = MappingProxyType({
 
 def setup_shaders(gltf, uri_path):
     """Loads and compiles all shaders defined or referenced in the given gltf."""
+    shader_ids = {}
     for shader_name, shader in gltf['shaders'].items():
         uri = shader['uri']
         if uri.startswith('data:text/plain;base64,'):
@@ -42,18 +43,20 @@ def setup_shaders(gltf, uri_path):
         if not gl.glGetShaderiv(shader_id, gl.GL_COMPILE_STATUS):
             raise Exception('failed to compile shader "%s":\n%s' % (shader_name, gl.glGetShaderInfoLog(shader_id).decode()))
         print('* compiled shader "%s"' % shader_name)
-        shader['id'] = shader_id
+        #shader['id'] = shader_id
+        shader_ids[shader_name] = shader_id
+    return shader_ids
 
 
-def setup_programs(gltf):
+def setup_programs(gltf, shader_ids):
     shaders = gltf['shaders']
     for program_name, program in gltf['programs'].items():
         program_id = gl.glCreateProgram()
-        gl.glAttachShader(program_id, shaders[program['vertexShader']]['id'])
-        gl.glAttachShader(program_id, shaders[program['fragmentShader']]['id'])
+        gl.glAttachShader(program_id, shader_ids[program['vertexShader']])
+        gl.glAttachShader(program_id, shader_ids[program['fragmentShader']])
         gl.glLinkProgram(program_id)
-        gl.glDetachShader(program_id, shaders[program['vertexShader']]['id'])
-        gl.glDetachShader(program_id, shaders[program['fragmentShader']]['id'])
+        gl.glDetachShader(program_id, shader_ids[program['vertexShader']])
+        gl.glDetachShader(program_id, shader_ids[program['fragmentShader']])
         if not gl.glGetProgramiv(program_id, gl.GL_LINK_STATUS):
             raise Exception('failed to link program "%s"' % program_name)
         program['id'] = program_id
@@ -150,7 +153,11 @@ set_technique_state.current_technique = None
 set_technique_state.states = {}
 
 
-def set_material_state(material, gltf):
+def set_material_state(material_name, gltf):
+    if set_material_state.current_material == material_name:
+        return
+    set_material_state.current_material = material_name
+    material = gltf['materials'][material_name]
     set_technique_state(material['technique'], gltf)
     technique = gltf['techniques'][material['technique']]
     program = gltf['programs'][technique['program']]
@@ -189,6 +196,7 @@ def set_material_state(material, gltf):
     if CHECK_GL_ERRORS:
         if gl.glGetError() != gl.GL_NO_ERROR:
             raise Exception('error setting material state')
+set_material_state.current_material = None
 
 
 def set_draw_state(primitive, gltf,
@@ -196,8 +204,8 @@ def set_draw_state(primitive, gltf,
                    projection_matrix=None,
                    view_matrix=None,
                    normal_matrix=None):
+    set_material_state(primitive['material'], gltf)
     material = gltf['materials'][primitive['material']]
-    set_material_state(material, gltf)
     technique = gltf['techniques'][material['technique']]
     program = gltf['programs'][technique['program']]
     accessors = gltf['accessors']

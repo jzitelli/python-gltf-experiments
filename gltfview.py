@@ -59,8 +59,8 @@ def view_gltf(gltf, uri_path, scene_name=None, openvr=False, window_size=None):
 
     gl.glClearColor(0.01, 0.01, 0.17, 1.0);
 
-    gltfu.setup_shaders(gltf, uri_path)
-    gltfu.setup_programs(gltf)
+    shader_ids = gltfu.setup_shaders(gltf, uri_path)
+    gltfu.setup_programs(gltf, shader_ids)
     gltfu.setup_textures(gltf, uri_path)
     gltfu.setup_buffers(gltf, uri_path)
 
@@ -86,6 +86,7 @@ def view_gltf(gltf, uri_path, scene_name=None, openvr=False, window_size=None):
                 raise Exception('TODO')
             camera_world_matrix = node['world_matrix']
             break
+    camera_position = camera_world_matrix[3, :3]
 
     key_state = {glfw.KEY_W: False,
                  glfw.KEY_S: False,
@@ -111,17 +112,20 @@ def view_gltf(gltf, uri_path, scene_name=None, openvr=False, window_size=None):
     def process_input(dt):
         glfw.PollEvents()
         if key_state[glfw.KEY_W]:
-            camera_world_matrix[3,2] += dt * move_speed
+            camera_position[2] += dt * move_speed
         if key_state[glfw.KEY_S]:
-            camera_world_matrix[3,2] -= dt * move_speed
+            camera_position[2] -= dt * move_speed
         if key_state[glfw.KEY_A]:
-            camera_world_matrix[3,0] += dt * move_speed
+            camera_position[0] += dt * move_speed
         if key_state[glfw.KEY_D]:
-            camera_world_matrix[3,0] -= dt * move_speed
+            camera_position[0] -= dt * move_speed
         if key_state[glfw.KEY_Q]:
-            camera_world_matrix[3,1] += dt * move_speed
+            camera_position[1] += dt * move_speed
         if key_state[glfw.KEY_Z]:
-            camera_world_matrix[3,1] -= dt * move_speed
+            camera_position[1] -= dt * move_speed
+
+    # sort nodes from front to back to avoid overdraw (assuming opaque objects):
+    nodes = sorted(nodes, key=lambda node: np.linalg.norm(camera_position - node['world_matrix'][3, :3]))
 
     print('* starting render loop...')
     sys.stdout.flush()
@@ -139,6 +143,8 @@ def view_gltf(gltf, uri_path, scene_name=None, openvr=False, window_size=None):
             gl.glViewport(0, 0, window_size[0], window_size[1])
             gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)
             view_matrix = np.linalg.inv(camera_world_matrix)
+            gltfu.set_material_state.current_material = None
+            gltfu.set_technique_state.current_technique = None
             for node in nodes:
                 gltfu.draw_node(node, gltf,
                                 projection_matrix=projection_matrix,
