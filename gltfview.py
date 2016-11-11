@@ -24,6 +24,7 @@ try:
     from OpenVRRenderer import OpenVRRenderer
 except ImportError:
     OpenVRRenderer = None
+from gltext import TextDrawer
 
 
 def setup_glfw(width=800, height=600, double_buffered=False):
@@ -59,11 +60,13 @@ def view_gltf(gltf, uri_path, scene_name=None, openvr=False, window_size=None):
 
     gl.glClearColor(0.01, 0.01, 0.17, 1.0);
 
+    text_drawer = TextDrawer()
+
     shader_ids = gltfu.setup_shaders(gltf, uri_path)
     gltfu.setup_programs(gltf, shader_ids)
     gltfu.setup_textures(gltf, uri_path)
     gltfu.setup_buffers(gltf, uri_path)
-
+    
     scene = gltf.scenes[scene_name]
     nodes = [gltf.nodes[n] for n in scene.nodes]
 
