@@ -1,4 +1,5 @@
 import os.path
+from ctypes import c_void_p
 
 import numpy as np
 import OpenGL.GL as gl
@@ -6,13 +7,13 @@ import PIL.Image as Image
 
 
 _vertex_shader = """precision highp float;
-uniform mat4 u_modelViewMatrix;
+uniform mat4 u_modelviewMatrix;
 uniform mat4 u_projectionMatrix;
 attribute vec2 a_position;
 attribute vec2 a_texcoord0;
 varying vec2 v_texcoord0;
 void main(void) {
-  vec4 pos = u_modelViewMatrix * vec4(a_position, 0.0, 1.0);
+  vec4 pos = u_modelviewMatrix * vec4(a_position, 0.0, 1.0);
   v_texcoord0 = a_texcoord0;
   gl_Position = u_projectionMatrix * pos;
 }"""
@@ -23,7 +24,8 @@ uniform sampler2D u_fonttex;
 uniform vec4 u_color;
 varying vec2 v_texcoord0;
 void main(void) {
-  gl_FragColor = u_color * texture2D(u_fonttex, v_texcoord0);
+  vec4 tex = vec4(u_color.rgb, texture2D(u_fonttex, v_texcoord0).w);
+  gl_FragColor = tex;
 }"""
 
 
@@ -100,9 +102,9 @@ class TextDrawer(object):
         gl.glSamplerParameteri(sampler_id, gl.GL_TEXTURE_WRAP_T, 10497)
         gl.glPixelStorei(gl.GL_UNPACK_ALIGNMENT, 1)
         gl.glTexImage2D(gl.GL_TEXTURE_2D, 0,
-                        gl.GL_RGBA,
+                        gl.GL_RED,
                         image.width, image.height, 0,
-                        gl.GL_LUMINANCE,
+                        gl.GL_RED,
                         gl.GL_UNSIGNED_BYTE,
                         np.array(list(image.getdata()), dtype=np.ubyte))
         gl.glGenerateMipmap(gl.GL_TEXTURE_2D)
@@ -161,21 +163,40 @@ class TextDrawer(object):
             gl.glBindBuffer(gl.GL_ARRAY_BUFFER, buffer_id)
             buffer_data = np.array([x0f[i], y0f[i],
                                     x1f[i], y0f[i],
-                                    x1f[i], y1f[i],
                                     x0f[i], y1f[i],
+                                    x1f[i], y1f[i],
                                     s0f[i], t0f[i],
                                     s1f[i], t0f[i],
-                                    s1f[i], t1f[i],
-                                    s0f[i], t1f[i]]).tobytes()
+                                    s0f[i], t1f[i],
+                                    s1f[i], t1f[i]]).tobytes()
             gl.glBufferData(gl.GL_ARRAY_BUFFER, len(buffer_data), buffer_data, gl.GL_STATIC_DRAW)
         gl.glBindBuffer(gl.GL_ARRAY_BUFFER, 0)
         if gl.glGetError() != gl.GL_NO_ERROR:
             raise Exception('failed to create buffers')
         self._buffer_ids = buffer_ids
+        self._matrix = np.eye(4, dtype=np.float32)
+        self._modelview_matrix = np.eye(4, dtype=np.float32)
 
-    def draw_text(self, text, position=(0,0), scale=1, color=(1.0, 1.0, 1.0, 1.0)):
+    def draw_text(self, text, color=(1.0, 1.0, 1.0, 1.0),
+                  view_matrix=None, projection_matrix=None):
         gl.glUseProgram(self._program_id)
         gl.glActiveTexture(gl.GL_TEXTURE0+0)
         gl.glBindTexture(gl.GL_TEXTURE_2D, self._texture_id)
-        gl.glBindSampler(gl.GL_SAMPLER_2D, self._sampler_id)
+        gl.glBindSampler(0, self._sampler_id)
         gl.glUniform1i(self._uniform_locations['u_fonttex'], 0)
+        gl.glUniform4f(self._uniform_locations['u_color'], *color)
+        if view_matrix is not None:
+            self._matrix.dot(view_matrix, out=self._modelview_matrix)
+            gl.glUniformMatrix4fv(self._uniform_locations['u_modelviewMatrix'], 1, False, self._modelview_matrix)
+        if projection_matrix is not None:
+            gl.glUniformMatrix4fv(self._uniform_locations['u_projectionMatrix'], 1, False, projection_matrix)
+        gl.glEnableVertexAttribArray(0)
+        gl.glEnableVertexAttribArray(1)
+        for char in text:
+            i = ord(char) - 32
+            if i >= 0 and i < 95:
+                gl.glBindBuffer(gl.GL_ARRAY_BUFFER, self._buffer_ids[i])
+                gl.glVertexAttribPointer(0, 2, gl.GL_FLOAT, False, 0, c_void_p(0))
+                gl.glVertexAttribPointer(1, 2, gl.GL_FLOAT, False, 0, c_void_p(8*4))
+                gl.glDrawArrays(gl.GL_TRIANGLE_STRIP, 0, 4)
+                

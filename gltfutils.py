@@ -212,6 +212,7 @@ def set_draw_state(primitive, gltf,
     bufferViews = gltf['bufferViews']
     accessor_names = primitive['attributes']
     set_draw_state.enabled_locations = []
+    buffer_id = None
     for attribute_name, parameter_name in technique['attributes'].items():
         parameter = technique['parameters'][parameter_name]
         if 'semantic' in parameter:
@@ -219,10 +220,11 @@ def set_draw_state(primitive, gltf,
             if semantic in accessor_names:
                 accessor = accessors[accessor_names[semantic]]
                 bufferView = bufferViews[accessor['bufferView']]
-                buffer_id = bufferView['id']
                 location = program['attribute_locations'][attribute_name]
                 gl.glEnableVertexAttribArray(location)
-                gl.glBindBuffer(bufferView['target'], buffer_id)
+                if buffer_id != bufferView['id']:
+                    buffer_id = bufferView['id']
+                    gl.glBindBuffer(bufferView['target'], buffer_id)
                 gl.glVertexAttribPointer(location, GLTF_BUFFERVIEW_TYPE_SIZES[accessor['type']],
                                          accessor['componentType'], False, accessor['byteStride'], c_void_p(accessor['byteOffset']))
                 set_draw_state.enabled_locations.append(location)
