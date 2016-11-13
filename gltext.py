@@ -146,7 +146,6 @@ class TextDrawer(object):
             y1f[i] = stb__consolas_32_usascii_y[i] + stb__consolas_32_usascii_h[i] + 0.5
             advance[i] = stb__consolas_32_usascii_a[i] / 16.0
         self._advance = advance
-
         buffer_ids = gl.glGenBuffers(STB_FONT_consolas_32_usascii_NUM_CHARS)
         for i, buffer_id in enumerate(buffer_ids):
             gl.glBindBuffer(gl.GL_ARRAY_BUFFER, buffer_id)
@@ -165,6 +164,7 @@ class TextDrawer(object):
         self._buffer_ids = buffer_ids
         self._matrix = np.eye(4, dtype=np.float32)
         self._matrix[:3, :3] *= 0.01;
+        self._matrix[1,1] *= -1
         self._modelview_matrix = np.eye(4, dtype=np.float32)
 
     def draw_text(self, text, color=(1.0, 1.0, 1.0, 1.0),
