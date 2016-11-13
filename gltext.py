@@ -9,11 +9,12 @@ import PIL.Image as Image
 _vertex_shader = """precision highp float;
 uniform mat4 u_modelviewMatrix;
 uniform mat4 u_projectionMatrix;
+uniform float advance;
 attribute vec2 a_position;
 attribute vec2 a_texcoord0;
 varying vec2 v_texcoord0;
 void main(void) {
-  vec4 pos = u_modelviewMatrix * vec4(a_position, 0.0, 1.0);
+  vec4 pos = u_modelviewMatrix * vec4(a_position.x + advance, a_position.y, 0.0, 1.0);
   v_texcoord0 = a_texcoord0;
   gl_Position = u_projectionMatrix * pos;
 }"""
@@ -24,7 +25,7 @@ uniform sampler2D u_fonttex;
 uniform vec4 u_color;
 varying vec2 v_texcoord0;
 void main(void) {
-  vec4 tex = vec4(u_color.rgb, texture2D(u_fonttex, v_texcoord0).w);
+  vec4 tex = vec4(u_color.rgb, texture2D(u_fonttex, v_texcoord0).r);
   gl_FragColor = tex;
 }"""
 
@@ -115,16 +116,12 @@ class TextDrawer(object):
         self._attribute_locations = {attribute: gl.glGetAttribLocation(program_id, attribute)
                                      for attribute in ['a_position', 'a_texcoord0']}
         self._uniform_locations = {uniform: gl.glGetUniformLocation(program_id, uniform)
-                                   for uniform in ['u_modelviewMatrix', 'u_projectionMatrix', 'u_fonttex', 'u_color']}
+                                   for uniform in ['u_modelviewMatrix', 'u_projectionMatrix', 'u_fonttex', 'u_color', 'advance']}
         self._texture_id = texture_id
         self._sampler_id = sampler_id
 
         recip_width = 1.0 / STB_FONT_consolas_32_usascii_BITMAP_WIDTH
         recip_height = 1.0 / STB_FONT_consolas_32_usascii_BITMAP_HEIGHT
-        s0 = np.empty(STB_FONT_consolas_32_usascii_NUM_CHARS, dtype=np.float32)
-        t0 = np.empty(STB_FONT_consolas_32_usascii_NUM_CHARS, dtype=np.float32)
-        s1 = np.empty(STB_FONT_consolas_32_usascii_NUM_CHARS, dtype=np.float32)
-        t1 = np.empty(STB_FONT_consolas_32_usascii_NUM_CHARS, dtype=np.float32)
         s0f = np.empty(STB_FONT_consolas_32_usascii_NUM_CHARS, dtype=np.float32)
         t0f = np.empty(STB_FONT_consolas_32_usascii_NUM_CHARS, dtype=np.float32)
         s1f = np.empty(STB_FONT_consolas_32_usascii_NUM_CHARS, dtype=np.float32)
@@ -147,15 +144,7 @@ class TextDrawer(object):
             y0f[i] = stb__consolas_32_usascii_y[i] - 0.5
             x1f[i] = stb__consolas_32_usascii_x[i] + stb__consolas_32_usascii_w[i] + 0.5
             y1f[i] = stb__consolas_32_usascii_y[i] + stb__consolas_32_usascii_h[i] + 0.5
-            advance[i] = stb__consolas_32_usascii_a[i]/16.0
-        self._s0f = s0f
-        self._t0f = t0f
-        self._s1f = s1f
-        self._t1f = t1f
-        self._x0f = x0f
-        self._y0f = y0f
-        self._x1f = x1f
-        self._y1f = y1f
+            advance[i] = stb__consolas_32_usascii_a[i] / 16.0
         self._advance = advance
 
         buffer_ids = gl.glGenBuffers(STB_FONT_consolas_32_usascii_NUM_CHARS)
@@ -175,6 +164,7 @@ class TextDrawer(object):
             raise Exception('failed to create buffers')
         self._buffer_ids = buffer_ids
         self._matrix = np.eye(4, dtype=np.float32)
+        self._matrix[:3, :3] *= 0.04;
         self._modelview_matrix = np.eye(4, dtype=np.float32)
 
     def draw_text(self, text, color=(1.0, 1.0, 1.0, 1.0),
@@ -192,11 +182,17 @@ class TextDrawer(object):
             gl.glUniformMatrix4fv(self._uniform_locations['u_projectionMatrix'], 1, False, projection_matrix)
         gl.glEnableVertexAttribArray(0)
         gl.glEnableVertexAttribArray(1)
+        gl.glEnable(gl.GL_BLEND)
+        gl.glBlendFunc(gl.GL_SRC_ALPHA, gl.GL_ONE_MINUS_SRC_ALPHA)
+        x = 0.0
         for char in text:
             i = ord(char) - 32
             if i >= 0 and i < 95:
                 gl.glBindBuffer(gl.GL_ARRAY_BUFFER, self._buffer_ids[i])
                 gl.glVertexAttribPointer(0, 2, gl.GL_FLOAT, False, 0, c_void_p(0))
                 gl.glVertexAttribPointer(1, 2, gl.GL_FLOAT, False, 0, c_void_p(8*4))
+                gl.glUniform1f(self._uniform_locations['advance'], x)
                 gl.glDrawArrays(gl.GL_TRIANGLE_STRIP, 0, 4)
+                x += self._advance[i]
+        gl.glDisable(gl.GL_BLEND)
                 

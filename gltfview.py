@@ -146,12 +146,14 @@ def view_gltf(gltf, uri_path, scene_name=None, openvr=False, window_size=None):
             gl.glViewport(0, 0, window_size[0], window_size[1])
             gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)
             view_matrix = np.linalg.inv(camera_world_matrix)
-            gltfu.set_material_state.current_material = None
-            gltfu.set_technique_state.current_technique = None
-            for node in nodes:
-                gltfu.draw_node(node, gltf,
-                                projection_matrix=projection_matrix,
-                                view_matrix=view_matrix)
+            # gltfu.set_material_state.current_material = None
+            # gltfu.set_technique_state.current_technique = None
+            # for node in nodes:
+            #     gltfu.draw_node(node, gltf,
+            #                     projection_matrix=projection_matrix,
+            #                     view_matrix=view_matrix)
+            text_drawer.draw_text("abcdef", color=(1.0, 1.0, 0.0, 1.0),
+                                  view_matrix=view_matrix, projection_matrix=projection_matrix)
         if nframes == 0:
             print("* num draw calls per frame: %d" % gltfu.num_draw_calls)
             sys.stdout.flush()
