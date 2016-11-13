@@ -164,10 +164,12 @@ class TextDrawer(object):
         self._buffer_ids = buffer_ids
         self._matrix = np.eye(4, dtype=np.float32)
         self._matrix[:3, :3] *= 0.01;
-        self._matrix[1,1] *= -1
+        self._matrix[1, 1] *= -1
+        #self._modelview_matrix = np.array(self._matrix)
         self._modelview_matrix = np.eye(4, dtype=np.float32)
-
     def draw_text(self, text, color=(1.0, 1.0, 1.0, 1.0),
+                  matrix=None,
+                  position=None,
                   view_matrix=None, projection_matrix=None):
         gl.glUseProgram(self._program_id)
         gl.glActiveTexture(gl.GL_TEXTURE0+0)
@@ -175,6 +177,10 @@ class TextDrawer(object):
         gl.glBindSampler(0, self._sampler_id)
         gl.glUniform1i(self._uniform_locations['u_fonttex'], 0)
         gl.glUniform4f(self._uniform_locations['u_color'], *color)
+        if matrix is not None:
+            self._matrix[...] = matrix
+            if position is not None:
+                self._matrix[3, :3] += position
         if view_matrix is not None:
             self._matrix.dot(view_matrix, out=self._modelview_matrix)
             gl.glUniformMatrix4fv(self._uniform_locations['u_modelviewMatrix'], 1, False, self._modelview_matrix)
@@ -194,4 +200,4 @@ class TextDrawer(object):
                 gl.glUniform1f(self._uniform_locations['advance'], x)
                 gl.glDrawArrays(gl.GL_TRIANGLE_STRIP, 0, 4)
                 x += self._advance[i]
-        #gl.glDisable(gl.GL_BLEND)
+        gl.glDisable(gl.GL_BLEND)
