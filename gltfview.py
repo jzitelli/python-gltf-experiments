@@ -152,7 +152,7 @@ def view_gltf(gltf, uri_path, scene_name=None, openvr=False, window_size=None):
             #     gltfu.draw_node(node, gltf,
             #                     projection_matrix=projection_matrix,
             #                     view_matrix=view_matrix)
-            text_drawer.draw_text("abcdef", color=(1.0, 1.0, 0.0, 1.0),
+            text_drawer.draw_text("%f" % dt, color=(1.0, 1.0, 0.0, 0.0),
                                   view_matrix=view_matrix, projection_matrix=projection_matrix)
         if nframes == 0:
             print("* num draw calls per frame: %d" % gltfu.num_draw_calls)

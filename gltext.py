@@ -164,7 +164,7 @@ class TextDrawer(object):
             raise Exception('failed to create buffers')
         self._buffer_ids = buffer_ids
         self._matrix = np.eye(4, dtype=np.float32)
-        self._matrix[:3, :3] *= 0.04;
+        self._matrix[:3, :3] *= 0.01;
         self._modelview_matrix = np.eye(4, dtype=np.float32)
 
     def draw_text(self, text, color=(1.0, 1.0, 1.0, 1.0),
@@ -185,8 +185,8 @@ class TextDrawer(object):
         gl.glEnable(gl.GL_BLEND)
         gl.glBlendFunc(gl.GL_SRC_ALPHA, gl.GL_ONE_MINUS_SRC_ALPHA)
         x = 0.0
-        for char in text:
-            i = ord(char) - 32
+        text = [ord(c) - 32 for c in text]
+        for i in text:
             if i >= 0 and i < 95:
                 gl.glBindBuffer(gl.GL_ARRAY_BUFFER, self._buffer_ids[i])
                 gl.glVertexAttribPointer(0, 2, gl.GL_FLOAT, False, 0, c_void_p(0))
@@ -194,5 +194,4 @@ class TextDrawer(object):
                 gl.glUniform1f(self._uniform_locations['advance'], x)
                 gl.glDrawArrays(gl.GL_TRIANGLE_STRIP, 0, 4)
                 x += self._advance[i]
-        gl.glDisable(gl.GL_BLEND)
-                
+        #gl.glDisable(gl.GL_BLEND)
