@@ -3,6 +3,7 @@ import os.path
 import json
 import argparse
 import functools
+from collections import defaultdict
 
 import numpy as np
 
@@ -77,6 +78,7 @@ def view_gltf(gltf, uri_path, scene_name=None, openvr=False, window_size=None):
     view_matrix = np.linalg.inv(camera_world_matrix)
     projection_matrix = np.array(matrix44.create_perspective_projection_matrix(np.rad2deg(55), window_size[0]/window_size[1], 0.1, 1000),
                                  dtype=np.float32)
+    
     for node in nodes:
         if 'camera' in node:
             camera = gltf['cameras'][node['camera']]
@@ -90,13 +92,10 @@ def view_gltf(gltf, uri_path, scene_name=None, openvr=False, window_size=None):
             camera_world_matrix = node['world_matrix']
             break
     camera_position = camera_world_matrix[3, :3]
+    camera_rotation = np.eye(3, dtype=np.float32)
 
-    key_state = {glfw.KEY_W: False,
-                 glfw.KEY_S: False,
-                 glfw.KEY_A: False,
-                 glfw.KEY_D: False,
-                 glfw.KEY_Q: False,
-                 glfw.KEY_Z: False}
+    key_state = defaultdict(bool)
+
     def on_keydown(window, key, scancode, action, mods):
         if key == glfw.KEY_ESCAPE and action == glfw.PRESS:
             glfw.SetWindowShouldClose(window, gl.GL_TRUE)
@@ -104,6 +103,7 @@ def view_gltf(gltf, uri_path, scene_name=None, openvr=False, window_size=None):
             key_state[key] = True
         elif action == glfw.RELEASE:
             key_state[key] = False
+        
     glfw.SetKeyCallback(window, on_keydown)
 
     def on_mousedown(window, button, action, mods):
@@ -111,6 +111,7 @@ def view_gltf(gltf, uri_path, scene_name=None, openvr=False, window_size=None):
     glfw.SetMouseButtonCallback(window, on_mousedown)
 
     move_speed = 2.0
+    turn_speed = 0.5
 
     def process_input(dt):
         glfw.PollEvents()
@@ -126,6 +127,16 @@ def view_gltf(gltf, uri_path, scene_name=None, openvr=False, window_size=None):
             camera_position[1] += dt * move_speed
         if key_state[glfw.KEY_Z]:
             camera_position[1] -= dt * move_speed
+        theta = 0.0
+        if key_state[glfw.KEY_LEFT]:
+            theta += dt * turn_speed
+        if key_state[glfw.KEY_RIGHT]:
+            theta -= dt * turn_speed
+        camera_rotation[0,0] = np.cos(theta)
+        camera_rotation[2,2] = camera_rotation[0,0]
+        camera_rotation[0,2] = np.sin(theta)
+        camera_rotation[2,0] = -camera_rotation[0,2]
+        camera_world_matrix[:3,:3] = camera_rotation.dot(camera_world_matrix[:3,:3])
 
     # sort nodes from front to back to avoid overdraw (assuming opaque objects):
     nodes = sorted(nodes, key=lambda node: np.linalg.norm(camera_position - node['world_matrix'][3, :3]))
@@ -146,19 +157,14 @@ def view_gltf(gltf, uri_path, scene_name=None, openvr=False, window_size=None):
             gl.glViewport(0, 0, window_size[0], window_size[1])
             gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)
             view_matrix = np.linalg.inv(camera_world_matrix)
-            # gltfu.set_material_state.current_material = None
-            # gltfu.set_technique_state.current_technique = None
-            # for node in nodes:
-            #     gltfu.draw_node(node, gltf,
-            #                     projection_matrix=projection_matrix,
-            #                     view_matrix=view_matrix)
-            # text_drawer.draw_text("%f" % dt, color=(1.0, 1.0, 0.0, 0.0),
-            #                       view_matrix=view_matrix, projection_matrix=projection_matrix)
+            gltfu.set_material_state.current_material = None
+            gltfu.set_technique_state.current_technique = None
+            for node in nodes:
+                gltfu.draw_node(node, gltf,
+                                projection_matrix=projection_matrix,
+                                view_matrix=view_matrix)
             text_drawer.draw_text("%f" % dt, color=(1.0, 1.0, 0.0, 0.0),
-                                  matrix=camera_world_matrix,
-                                  position=[0.0, 0.0, 10.0],
-                                  view_matrix=view_matrix,
-                                  projection_matrix=projection_matrix)
+                                  view_matrix=view_matrix, projection_matrix=projection_matrix)
         if nframes == 0:
             print("* num draw calls per frame: %d" % gltfu.num_draw_calls)
             sys.stdout.flush()

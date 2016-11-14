@@ -126,10 +126,6 @@ class TextDrawer(object):
         t0f = np.empty(STB_FONT_consolas_32_usascii_NUM_CHARS, dtype=np.float32)
         s1f = np.empty(STB_FONT_consolas_32_usascii_NUM_CHARS, dtype=np.float32)
         t1f = np.empty(STB_FONT_consolas_32_usascii_NUM_CHARS, dtype=np.float32)
-        x0 = np.empty(STB_FONT_consolas_32_usascii_NUM_CHARS, dtype=np.short)
-        y0 = np.empty(STB_FONT_consolas_32_usascii_NUM_CHARS, dtype=np.short)
-        x1 = np.empty(STB_FONT_consolas_32_usascii_NUM_CHARS, dtype=np.short)
-        y1 = np.empty(STB_FONT_consolas_32_usascii_NUM_CHARS, dtype=np.short)
         x0f = np.empty(STB_FONT_consolas_32_usascii_NUM_CHARS, dtype=np.float32)
         y0f = np.empty(STB_FONT_consolas_32_usascii_NUM_CHARS, dtype=np.float32)
         x1f = np.empty(STB_FONT_consolas_32_usascii_NUM_CHARS, dtype=np.float32)
@@ -150,13 +146,13 @@ class TextDrawer(object):
         for i, buffer_id in enumerate(buffer_ids):
             gl.glBindBuffer(gl.GL_ARRAY_BUFFER, buffer_id)
             buffer_data = np.array([x0f[i], y0f[i],
-                                    x1f[i], y0f[i],
                                     x0f[i], y1f[i],
+                                    x1f[i], y0f[i],
                                     x1f[i], y1f[i],
-                                    s0f[i], t0f[i],
-                                    s1f[i], t0f[i],
                                     s0f[i], t1f[i],
-                                    s1f[i], t1f[i]]).tobytes()
+                                    s0f[i], t0f[i],
+                                    s1f[i], t1f[i],
+                                    s1f[i], t0f[i]]).tobytes()
             gl.glBufferData(gl.GL_ARRAY_BUFFER, len(buffer_data), buffer_data, gl.GL_STATIC_DRAW)
         gl.glBindBuffer(gl.GL_ARRAY_BUFFER, 0)
         if gl.glGetError() != gl.GL_NO_ERROR:
@@ -164,12 +160,8 @@ class TextDrawer(object):
         self._buffer_ids = buffer_ids
         self._matrix = np.eye(4, dtype=np.float32)
         self._matrix[:3, :3] *= 0.01;
-        self._matrix[1, 1] *= -1
-        #self._modelview_matrix = np.array(self._matrix)
         self._modelview_matrix = np.eye(4, dtype=np.float32)
-    def draw_text(self, text, color=(1.0, 1.0, 1.0, 1.0),
-                  matrix=None,
-                  position=None,
+    def draw_text(self, text, color=(1.0, 1.0, 1.0, 0.0),
                   view_matrix=None, projection_matrix=None):
         gl.glUseProgram(self._program_id)
         gl.glActiveTexture(gl.GL_TEXTURE0+0)
@@ -177,10 +169,6 @@ class TextDrawer(object):
         gl.glBindSampler(0, self._sampler_id)
         gl.glUniform1i(self._uniform_locations['u_fonttex'], 0)
         gl.glUniform4f(self._uniform_locations['u_color'], *color)
-        if matrix is not None:
-            self._matrix[...] = matrix
-            if position is not None:
-                self._matrix[3, :3] += position
         if view_matrix is not None:
             self._matrix.dot(view_matrix, out=self._modelview_matrix)
             gl.glUniformMatrix4fv(self._uniform_locations['u_modelviewMatrix'], 1, False, self._modelview_matrix)
@@ -200,4 +188,6 @@ class TextDrawer(object):
                 gl.glUniform1f(self._uniform_locations['advance'], x)
                 gl.glDrawArrays(gl.GL_TRIANGLE_STRIP, 0, 4)
                 x += self._advance[i]
+        gl.glDisableVertexAttribArray(0)
+        gl.glDisableVertexAttribArray(1)
         gl.glDisable(gl.GL_BLEND)
