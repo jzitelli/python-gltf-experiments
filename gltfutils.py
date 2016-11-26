@@ -43,7 +43,6 @@ def setup_shaders(gltf, uri_path):
         if not gl.glGetShaderiv(shader_id, gl.GL_COMPILE_STATUS):
             raise Exception('failed to compile shader "%s":\n%s' % (shader_name, gl.glGetShaderInfoLog(shader_id).decode()))
         print('* compiled shader "%s"' % shader_name)
-        #shader['id'] = shader_id
         shader_ids[shader_name] = shader_id
     return shader_ids
 
@@ -312,6 +311,22 @@ def draw_node(node, gltf,
         draw_node(gltf['nodes'][child], gltf,
                   projection_matrix=projection_matrix, view_matrix=view_matrix)
 draw_node.modelview_matrix = np.empty((4,4), dtype=np.float32)
+
+
+def calc_projection_matrix(camera, out=None):
+    if 'perspective' in camera:
+        f = 1 / np.tan(camera['perspective']['yfov'] / 2)
+        znear, zfar = camera['perspective']['znear'], camera['perspective']['zfar']
+        projection_matrix = np.array([[f / camera['perspective']['aspectRatio'], 0, 0, 0],
+                                      [0, f, 0, 0],
+                                      [0, 0, (znear + zfar) / (znear - zfar), 2 * znear * zfar / (znear - zfar)],
+                                      [0, 0, -1, 0]], dtype=np.float32)
+    elif 'orthographic' in camera:
+        pass # TODO
+    if out is not None:
+        out[...] = projection_matrix
+        return out
+    return projection_matrix
 
 
 def update_world_matrices(node, gltf, world_matrix=None):

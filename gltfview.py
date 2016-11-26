@@ -196,9 +196,6 @@ def main():
     except Exception as err:
         raise Exception('failed to load %s:\n%s' % (args.filename, err))
 
-    # for prop in DEFAULT_GLTF.keys():
-    #     gltf[prop].update(DEFAULT_GLTF[prop])
-
     gltf = JSobject(gltf)
     uri_path = os.path.dirname(args.filename)
 
