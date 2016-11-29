@@ -318,7 +318,7 @@ def draw_node(node, gltf,
 draw_node.modelview_matrix = np.empty((4,4), dtype=np.float32)
 
 
-def calc_projection_matrix(camera, out=None):
+def calc_projection_matrix(camera):
     if 'perspective' in camera:
         f = 1 / np.tan(camera['perspective']['yfov'] / 2)
         znear, zfar = camera['perspective']['znear'], camera['perspective']['zfar']
@@ -327,10 +327,7 @@ def calc_projection_matrix(camera, out=None):
                                       [0, 0, (znear + zfar) / (znear - zfar), 2 * znear * zfar / (znear - zfar)],
                                       [0, 0, -1, 0]], dtype=np.float32)
     elif 'orthographic' in camera:
-        pass # TODO
-    if out is not None:
-        out[...] = projection_matrix
-        return out
+        raise Exception('TODO')
     return projection_matrix
 
 
