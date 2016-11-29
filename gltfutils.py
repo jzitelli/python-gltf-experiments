@@ -210,25 +210,6 @@ def set_draw_state(primitive, gltf,
     accessors = gltf['accessors']
     bufferViews = gltf['bufferViews']
     accessor_names = primitive['attributes']
-    set_draw_state.enabled_locations = []
-    buffer_id = None
-    for attribute_name, parameter_name in technique['attributes'].items():
-        parameter = technique['parameters'][parameter_name]
-        if 'semantic' in parameter:
-            semantic = parameter['semantic']
-            if semantic in accessor_names:
-                accessor = accessors[accessor_names[semantic]]
-                bufferView = bufferViews[accessor['bufferView']]
-                location = program['attribute_locations'][attribute_name]
-                gl.glEnableVertexAttribArray(location)
-                if buffer_id != bufferView['id']:
-                    buffer_id = bufferView['id']
-                    gl.glBindBuffer(bufferView['target'], buffer_id)
-                gl.glVertexAttribPointer(location, GLTF_BUFFERVIEW_TYPE_SIZES[accessor['type']],
-                                         accessor['componentType'], False, accessor['byteStride'], c_void_p(accessor['byteOffset']))
-                set_draw_state.enabled_locations.append(location)
-        else:
-            raise Exception('expected a semantic property for attribute "%s"' % attribute_name)
     for uniform_name, parameter_name in technique['uniforms'].items():
         parameter = technique['parameters'][parameter_name]
         if 'semantic' in parameter:
@@ -252,11 +233,38 @@ def set_draw_state(primitive, gltf,
                     gl.glUniformMatrix3fv(location, 1, True, normal_matrix)
             else:
                 raise Exception('unhandled semantic: %s' % parameter['semantic'])
+    if 'vao' not in primitive:
+        enabled_locations = []
+        buffer_id = None
+        vao = gl.glGenVertexArrays(1)
+        gl.glBindVertexArray(vao)
+        for attribute_name, parameter_name in technique['attributes'].items():
+            parameter = technique['parameters'][parameter_name]
+            if 'semantic' in parameter:
+                semantic = parameter['semantic']
+                if semantic in accessor_names:
+                    accessor = accessors[accessor_names[semantic]]
+                    bufferView = bufferViews[accessor['bufferView']]
+                    location = program['attribute_locations'][attribute_name]
+                    gl.glEnableVertexAttribArray(location)
+                    enabled_locations.append(location)
+                    if buffer_id != bufferView['id']:
+                        buffer_id = bufferView['id']
+                        gl.glBindBuffer(bufferView['target'], buffer_id)
+                    gl.glVertexAttribPointer(location, GLTF_BUFFERVIEW_TYPE_SIZES[accessor['type']],
+                                             accessor['componentType'], False, accessor['byteStride'], c_void_p(accessor['byteOffset']))
+                else:
+                    raise Exception('expected a semantic property for attribute "%s"' % attribute_name)
+        primitive['vao'] = vao
+        gl.glBindVertexArray(0)
+        for location in enabled_locations:
+            gl.glDisableVertexAttribArray(location)
+    gl.glBindVertexArray(primitive['vao'])
     if CHECK_GL_ERRORS:
         if gl.glGetError() != gl.GL_NO_ERROR:
             raise Exception('error setting draw state')
 set_draw_state.modelview_matrix = np.empty((4,4), dtype=np.float32)
-set_draw_state.enabled_locations = []
+set_draw_state.vaos = {}
 
 
 def draw_primitive(primitive, gltf,
@@ -279,9 +287,6 @@ def draw_primitive(primitive, gltf,
     if CHECK_GL_ERRORS:
         if gl.glGetError() != gl.GL_NO_ERROR:
             raise Exception('error drawing elements')
-    for loc in set_draw_state.enabled_locations:
-        gl.glDisableVertexAttribArray(loc)
-    set_draw_state.enabled_locations = []
 num_draw_calls = 0
 
 
