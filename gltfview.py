@@ -74,11 +74,11 @@ def view_gltf(gltf, uri_path, scene_name=None, openvr=False, window_size=None):
     for node in nodes:
         gltfu.update_world_matrices(node, gltf)
 
-    camera_world_matrix = np.eye(4, 4, dtype=np.float32)
+    camera_world_matrix = np.eye(4, dtype=np.float32)
     view_matrix = np.linalg.inv(camera_world_matrix)
     projection_matrix = np.array(matrix44.create_perspective_projection_matrix(np.rad2deg(55), window_size[0]/window_size[1], 0.1, 1000),
                                  dtype=np.float32)
-    
+
     for node in nodes:
         if 'camera' in node:
             camera = gltf['cameras'][node['camera']]
@@ -103,7 +103,7 @@ def view_gltf(gltf, uri_path, scene_name=None, openvr=False, window_size=None):
             key_state[key] = True
         elif action == glfw.RELEASE:
             key_state[key] = False
-        
+
     glfw.SetKeyCallback(window, on_keydown)
 
     def on_mousedown(window, button, action, mods):
