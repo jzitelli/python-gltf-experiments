@@ -91,3 +91,7 @@ DEFAULT_GLTF = json.loads("""{
 
 DEFAULT_GLTF['shaders']['vertexShader0']['uri'] += DEFAULT_VS_BASE64
 DEFAULT_GLTF['shaders']['fragmentShader0']['uri'] += DEFAULT_FS_BASE64
+
+if __name__ == "__main__":
+    with open('default.gltf', 'w') as f:
+        f.write(json.dumps(DEFAULT_GLTF, indent=2))

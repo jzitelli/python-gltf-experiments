@@ -75,7 +75,6 @@ def view_gltf(gltf, uri_path, scene_name=None, openvr=False, window_size=None):
         gltfu.update_world_matrices(node, gltf)
 
     camera_world_matrix = np.eye(4, dtype=np.float32)
-    view_matrix = np.linalg.inv(camera_world_matrix)
     projection_matrix = np.array(matrix44.create_perspective_projection_matrix(np.rad2deg(55), window_size[0]/window_size[1], 0.1, 1000),
                                  dtype=np.float32)
 
@@ -92,7 +91,9 @@ def view_gltf(gltf, uri_path, scene_name=None, openvr=False, window_size=None):
             camera_world_matrix = node['world_matrix']
             break
     camera_position = camera_world_matrix[3, :3]
-    camera_rotation = np.eye(3, dtype=np.float32)
+    camera_rotation = camera_world_matrix[:3, :3]
+    dposition = np.zeros(3, dtype=np.float32)
+    rotation = np.eye(3, dtype=np.float32)
 
     key_state = defaultdict(bool)
 
@@ -115,28 +116,30 @@ def view_gltf(gltf, uri_path, scene_name=None, openvr=False, window_size=None):
 
     def process_input(dt):
         glfw.PollEvents()
+        dposition[:] = 0.0
         if key_state[glfw.KEY_W]:
-            camera_position[2] += dt * move_speed
+            dposition[2] -= dt * move_speed
         if key_state[glfw.KEY_S]:
-            camera_position[2] -= dt * move_speed
+            dposition[2] += dt * move_speed
         if key_state[glfw.KEY_A]:
-            camera_position[0] += dt * move_speed
+            dposition[0] -= dt * move_speed
         if key_state[glfw.KEY_D]:
-            camera_position[0] -= dt * move_speed
+            dposition[0] += dt * move_speed
         if key_state[glfw.KEY_Q]:
-            camera_position[1] += dt * move_speed
+            dposition[1] += dt * move_speed
         if key_state[glfw.KEY_Z]:
-            camera_position[1] -= dt * move_speed
+            dposition[1] -= dt * move_speed
         theta = 0.0
         if key_state[glfw.KEY_LEFT]:
-            theta += dt * turn_speed
-        if key_state[glfw.KEY_RIGHT]:
             theta -= dt * turn_speed
-        camera_rotation[0,0] = np.cos(theta)
-        camera_rotation[2,2] = camera_rotation[0,0]
-        camera_rotation[0,2] = np.sin(theta)
-        camera_rotation[2,0] = -camera_rotation[0,2]
-        camera_world_matrix[:3,:3] = camera_rotation.dot(camera_world_matrix[:3,:3])
+        if key_state[glfw.KEY_RIGHT]:
+            theta += dt * turn_speed
+        rotation[0,0] = np.cos(theta)
+        rotation[2,2] = rotation[0,0]
+        rotation[0,2] = np.sin(theta)
+        rotation[2,0] = -rotation[0,2]
+        camera_rotation[...] = rotation.dot(camera_world_matrix[:3,:3])
+        camera_position[:] += camera_rotation.T.dot(dposition)
 
     # sort nodes from front to back to avoid overdraw (assuming opaque objects):
     nodes = sorted(nodes, key=lambda node: np.linalg.norm(camera_position - node['world_matrix'][3, :3]))
@@ -164,7 +167,8 @@ def view_gltf(gltf, uri_path, scene_name=None, openvr=False, window_size=None):
                                 projection_matrix=projection_matrix,
                                 view_matrix=view_matrix)
             text_drawer.draw_text("%f" % dt, color=(1.0, 1.0, 0.0, 0.0),
-                                  view_matrix=view_matrix, projection_matrix=projection_matrix)
+                                  view_matrix=view_matrix,
+                                  projection_matrix=projection_matrix)
         if nframes == 0:
             print("* num draw calls per frame: %d" % gltfu.num_draw_calls)
             sys.stdout.flush()
@@ -195,6 +199,9 @@ def main():
         print('* loaded "%s"' % args.filename)
     except Exception as err:
         raise Exception('failed to load %s:\n%s' % (args.filename, err))
+
+    # for prop in DEFAULT_GLTF.keys():
+    #     gltf[prop].update(DEFAULT_GLTF[prop])
 
     gltf = JSobject(gltf)
     uri_path = os.path.dirname(args.filename)
