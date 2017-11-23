@@ -16,7 +16,7 @@ import gltfutils as gltfu
 c_float_p = POINTER(c_float)
 
 
-class OpenVRRenderer(object):    
+class OpenVRRenderer(object):
     def __init__(self, multisample=0, znear=0.1, zfar=1000):
         self.vr_system = openvr.init(openvr.VRApplication_Scene)
         w, h = self.vr_system.getRecommendedRenderTargetSize()
@@ -30,9 +30,9 @@ class OpenVRRenderer(object):
         poses_t = openvr.TrackedDevicePose_t * openvr.k_unMaxTrackedDeviceCount
         self.poses = poses_t()
         self.projection_matrices = (np.asarray(matrixForOpenVRMatrix(self.vr_system.getProjectionMatrix(openvr.Eye_Left,
-                                                                                                        znear, zfar, openvr.API_OpenGL))),
+                                                                                                        znear, zfar))),
                                     np.asarray(matrixForOpenVRMatrix(self.vr_system.getProjectionMatrix(openvr.Eye_Right,
-                                                                                                        znear, zfar, openvr.API_OpenGL))))
+                                                                                                        znear, zfar))))
         self.eye_transforms = (np.asarray(matrixForOpenVRMatrix(self.vr_system.getEyeToHeadTransform(openvr.Eye_Left)).I),
                                np.asarray(matrixForOpenVRMatrix(self.vr_system.getEyeToHeadTransform(openvr.Eye_Right)).I))
         self.view = np.eye(4, dtype=np.float32)
@@ -75,17 +75,18 @@ class OpenVRRenderer(object):
         gl.glBindFramebuffer(gl.GL_FRAMEBUFFER, 0)
 
     def process_input(self):
-        got_state, state = self.vr_system.getControllerState(1)
-        if got_state and state.rAxis[1].x > 0.05:
-            self.vr_system.triggerHapticPulse(1, 0, int(3200 * state.rAxis[1].x))
-        got_state, state = self.vr_system.getControllerState(2)
-        if got_state and state.rAxis[1].x > 0.05:
-            self.vr_system.triggerHapticPulse(2, 0, int(3200 * state.rAxis[1].x))
-        if self.vr_system.pollNextEvent(self.vr_event):
-            if self.vr_event.eventType == openvr.VREvent_ButtonPress:
-                pass #print('vr controller button pressed')
-            elif self.vr_event.eventType == openvr.VREvent_ButtonUnpress:
-                pass #print('vr controller button unpressed')
+        pass
+        # state = self.vr_system.getControllerState(1)
+        # if state and state.rAxis[1].x > 0.05:
+        #     self.vr_system.triggerHapticPulse(1, 0, int(3200 * state.rAxis[1].x))
+        # state = self.vr_system.getControllerState(2)
+        # if state and state.rAxis[1].x > 0.05:
+        #     self.vr_system.triggerHapticPulse(2, 0, int(3200 * state.rAxis[1].x))
+        # if self.vr_system.pollNextEvent(self.vr_event):
+        #     if self.vr_event.eventType == openvr.VREvent_ButtonPress:
+        #         pass #print('vr controller button pressed')
+        #     elif self.vr_event.eventType == openvr.VREvent_ButtonUnpress:
+        #         pass #print('vr controller button unpressed')
 
     def shutdown(self):
         self.controllers.dispose_gl()

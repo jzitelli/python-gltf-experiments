@@ -4,6 +4,7 @@ import json
 import argparse
 import functools
 from collections import defaultdict
+import logging
 
 import numpy as np
 
@@ -18,14 +19,18 @@ import cyglfw3 as glfw
 from pyrr import matrix44
 
 
+_logger = logging.getLogger(__name__)
 import gltfutils as gltfu
-from gltfdefault import DEFAULT_GLTF
-from JSobject import JSobject
+from jsobject import JSobject as jsobject
 try:
     from OpenVRRenderer import OpenVRRenderer
 except ImportError:
     OpenVRRenderer = None
-from gltext import TextDrawer
+# from gltext import TextDrawer
+
+
+LOGGING_FORMAT =       '[gltfview.py] %(asctime)s * %(levelname)s * %(name)s : %(message)s'
+DEBUG_LOGGING_FORMAT = '[gltfview.py] %(asctime)s * %(levelname)s * %(name)s : %(message)s'
 
 
 def setup_glfw(width=800, height=600, double_buffered=False):
@@ -39,7 +44,7 @@ def setup_glfw(width=800, height=600, double_buffered=False):
         glfw.Terminate()
         raise Exception('failed to create glfw window')
     glfw.MakeContextCurrent(window)
-    print('GL_VERSION: %s' % gl.glGetString(gl.GL_VERSION))
+    _logger.info('GL_VERSION: %s' % gl.glGetString(gl.GL_VERSION))
     return window
 
 
@@ -48,20 +53,16 @@ def view_gltf(gltf, uri_path, scene_name=None, openvr=False, window_size=None):
         scene_name = gltf['scene']
     if window_size is None:
         window_size = [800, 600]
-
     window = setup_glfw(width=window_size[0], height=window_size[1],
                         double_buffered=not openvr)
-
-    if openvr and OpenVRRenderer is not None:
-        vr_renderer = OpenVRRenderer()
-
     def on_resize(window, width, height):
         window_size[0], window_size[1] = width, height
     glfw.SetWindowSizeCallback(window, on_resize)
+    if openvr and OpenVRRenderer is not None:
+        vr_renderer = OpenVRRenderer()
+    # text_drawer = TextDrawer()
 
     gl.glClearColor(0.01, 0.01, 0.17, 1.0);
-
-    text_drawer = TextDrawer()
 
     shader_ids = gltfu.setup_shaders(gltf, uri_path)
     gltfu.setup_programs(gltf, shader_ids)
@@ -70,7 +71,6 @@ def view_gltf(gltf, uri_path, scene_name=None, openvr=False, window_size=None):
 
     scene = gltf.scenes[scene_name]
     nodes = [gltf.nodes[n] for n in scene.nodes]
-
     for node in nodes:
         gltfu.update_world_matrices(node, gltf)
 
@@ -144,13 +144,16 @@ def view_gltf(gltf, uri_path, scene_name=None, openvr=False, window_size=None):
     # sort nodes from front to back to avoid overdraw (assuming opaque objects):
     nodes = sorted(nodes, key=lambda node: np.linalg.norm(camera_position - node['world_matrix'][3, :3]))
 
-    print('* starting render loop...')
+    _logger.info('starting render loop...')
     sys.stdout.flush()
+    gltfu.num_draw_calls = 0
     nframes = 0
     lt = glfw.GetTime()
+    dt_max = 0.0
     while not glfw.WindowShouldClose(window):
         t = glfw.GetTime()
         dt = t - lt
+        dt_max = max(dt, dt_max)
         lt = t
         process_input(dt)
         if openvr:
@@ -166,17 +169,19 @@ def view_gltf(gltf, uri_path, scene_name=None, openvr=False, window_size=None):
                 gltfu.draw_node(node, gltf,
                                 projection_matrix=projection_matrix,
                                 view_matrix=view_matrix)
-            text_drawer.draw_text("%f" % dt, color=(1.0, 1.0, 0.0, 0.0),
-                                  view_matrix=view_matrix,
-                                  projection_matrix=projection_matrix)
+            # text_drawer.draw_text("%f" % dt, color=(1.0, 1.0, 0.0, 0.0),
+            #                       view_matrix=view_matrix,
+            #                       projection_matrix=projection_matrix)
         if nframes == 0:
-            print("* num draw calls per frame: %d" % gltfu.num_draw_calls)
+            _logger.info("num draw calls per frame: %d", gltfu.num_draw_calls)
             sys.stdout.flush()
             gltfu.num_draw_calls = 0
             st = glfw.GetTime()
         nframes += 1
         glfw.SwapBuffers(window)
-    print('* FPS (avg): %f' % ((nframes - 1) / (t - st)))
+    _logger.info('FPS (avg): %f', ((nframes - 1) / (t - st)))
+    _logger.info('MAX FRAME RENDER TIME: %f', dt_max)
+    sys.stdout.flush()
 
     if openvr:
         vr_renderer.shutdown()
@@ -188,22 +193,27 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('filename', help='path of glTF file to view')
     parser.add_argument("--openvr", help="view in VR", action="store_true")
-    args = parser.parse_args()
+    parser.add_argument("-v", help="enable verbose logging", action="store_true")
 
+    args = parser.parse_args()
+    if args.v:
+        logging.basicConfig(format=DEBUG_LOGGING_FORMAT, level=logging.DEBUG)
+    else:
+        logging.basicConfig(format=LOGGING_FORMAT, level=logging.WARNING)
     if args.openvr and OpenVRRenderer is None:
         raise Exception('error importing OpenVRRenderer')
 
     global gltf
     try:
         gltf = json.loads(open(args.filename).read())
-        print('* loaded "%s"' % args.filename)
+        _logger.info('* loaded "%s"', args.filename)
     except Exception as err:
         raise Exception('failed to load %s:\n%s' % (args.filename, err))
 
     # for prop in DEFAULT_GLTF.keys():
     #     gltf[prop].update(DEFAULT_GLTF[prop])
 
-    gltf = JSobject(gltf)
+    gltf = jsobject(gltf)
     uri_path = os.path.dirname(args.filename)
 
     view_gltf(gltf, uri_path, openvr=args.openvr)

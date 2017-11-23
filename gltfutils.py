@@ -5,12 +5,15 @@ try: # python 3.3 or later
     from types import MappingProxyType
 except ImportError as err:
     MappingProxyType = dict
+import logging
 
 import numpy as np
 import OpenGL.GL as gl
 import PIL.Image as Image
 from pyrr import matrix44
 
+
+_logger = logging.getLogger(__name__)
 
 CHECK_GL_ERRORS = False
 
@@ -32,23 +35,22 @@ def setup_shaders(gltf, uri_path):
         uri = shader['uri']
         if uri.startswith('data:text/plain;base64,'):
             shader_str = base64.urlsafe_b64decode(uri.split(',')[1]).decode()
-            print('* decoded shader "%s":\n%s' % (shader_name, shader_str))
+            _logger.debug('* decoded shader "%s":\n%s', shader_name, shader_str)
         else:
             filename = os.path.join(uri_path, shader['uri'])
             shader_str = open(filename).read()
-            print('* loaded shader "%s" (from %s):\n%s' % (shader_name, filename, shader_str))
+            _logger.debug('* loaded shader "%s" (from %s):\n%s', shader_name, filename, shader_str)
         shader_id = gl.glCreateShader(shader['type'])
         gl.glShaderSource(shader_id, shader_str)
         gl.glCompileShader(shader_id)
         if not gl.glGetShaderiv(shader_id, gl.GL_COMPILE_STATUS):
             raise Exception('failed to compile shader "%s":\n%s' % (shader_name, gl.glGetShaderInfoLog(shader_id).decode()))
-        print('* compiled shader "%s"' % shader_name)
+        _logger.debug('* compiled shader "%s"', shader_name)
         shader_ids[shader_name] = shader_id
     return shader_ids
 
 
 def setup_programs(gltf, shader_ids):
-    shaders = gltf['shaders']
     for program_name, program in gltf['programs'].items():
         program_id = gl.glCreateProgram()
         gl.glAttachShader(program_id, shader_ids[program['vertexShader']])
@@ -62,8 +64,7 @@ def setup_programs(gltf, shader_ids):
         program['attribute_locations'] = {attribute_name: gl.glGetAttribLocation(program_id, attribute_name)
                                           for attribute_name in program['attributes']}
         program['uniform_locations'] = {}
-        print('* linked program "%s"' % program_name)
-        print('  attribute locations: %s' % program['attribute_locations'])
+        _logger.debug('* linked program "%s"\n  attribute locations: %s', program_name, program['attribute_locations'])
 
 
 def setup_textures(gltf, uri_path):
@@ -73,7 +74,7 @@ def setup_textures(gltf, uri_path):
         filename = os.path.join(uri_path, image['uri'])
         pil_image = Image.open(filename)
         pil_images[image_name] = pil_image
-        print('* loaded image "%s" (from %s)' % (image_name, filename))
+        _logger.debug('* loaded image "%s" (from %s)', image_name, filename)
     for texture_name, texture in gltf.get('textures', {}).items():
         sampler = gltf['samplers'][texture['sampler']]
         texture_id = gl.glGenTextures(1)
@@ -97,7 +98,7 @@ def setup_textures(gltf, uri_path):
         if gl.glGetError() != gl.GL_NO_ERROR:
             raise Exception('failed to create texture "%s"' % texture_name)
         texture['id'] = texture_id
-        print('* created texture "%s"' % texture_name)
+        _logger.debug('* created texture "%s"', texture_name)
 
 
 def setup_buffers(gltf, uri_path):
@@ -114,10 +115,11 @@ def setup_buffers(gltf, uri_path):
             elif buffer['type'] == 'text':
                 raise Exception('TODO')
                 #data_buffers[buffer_name] = open(filename, 'r').read()
-            print('* loaded buffer "%s" (from %s)' % (buffer_name, filename))
+            _logger.debug('* loaded buffer "%s" (from %s)', buffer_name, filename)
     for bufferView_name, bufferView in gltf['bufferViews'].items():
         buffer_id = gl.glGenBuffers(1)
-        byteOffset, byteLength = bufferView['byteOffset'], bufferView['byteLength']
+        #byteLength = bufferView['byteLength']
+        byteOffset = bufferView['byteOffset']
         gl.glBindBuffer(bufferView['target'], buffer_id)
         gl.glBufferData(bufferView['target'], bufferView['byteLength'],
                         data_buffers[bufferView['buffer']][byteOffset:], gl.GL_STATIC_DRAW)
@@ -125,7 +127,7 @@ def setup_buffers(gltf, uri_path):
             raise Exception('failed to create buffer "%s"' % bufferView_name)
         bufferView['id'] = buffer_id
         gl.glBindBuffer(bufferView['target'], 0)
-        print('* created buffer "%s"' % bufferView_name)
+        _logger.debug('* created buffer "%s"' % bufferView_name)
 
 
 def set_technique_state(technique_name, gltf):
